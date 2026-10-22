@@ -1,0 +1,102 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.143'
+}
+version = mod_version
+group = 'org.zifeng.ae2skills'
+base.archivesName = 'zifeng_ae2_skills'
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+repositories {
+    maven { url = 'https://api.modrinth.com/maven' }
+}
+
+// Compile and test against an unchanged, published host. Never package host classes.
+def hostFile = layout.projectDirectory.file('reference/host-1.5.0.jar')
+tasks.register('prepareHost') {
+    outputs.file(hostFile)
+    doLast {
+        def target = hostFile.asFile
+        target.parentFile.mkdirs()
+        new URL('https://edge.forgecdn.net/files/9048/417/zifeng_s_custom_skill_tree-1.21.1-NeoForge-1.5.0.jar').withInputStream { input ->
+            target.withOutputStream { output -> output << input }
+        }
+        def hash = java.security.MessageDigest.getInstance('SHA-256').digest(target.bytes).encodeHex().toString()
+        if (hash != 'a237e19ed5cfadd6676126b4e4b4e56ddfb9c0b81bddfd6517d76f113ce85a46') {
+            throw new GradleException('Downloaded host checksum mismatch; see reference/host-1.5.0.jar')
+        }
+    }
+}
+def host = files(hostFile).builtBy(tasks.named('prepareHost'))
+dependencies {
+    compileOnly host
+    // Runtime matrix tests must exercise bytecode compiled against the same release baseline.
+    compileOnly 'maven.modrinth:ae2:19.2.17'
+    // Jade API（compileOnly：仅编译用；运行时若未安装 Jade，插件类不会被加载）
+    compileOnly 'maven.modrinth:jade:15.10.6+neoforge'
+    if (providers.gradleProperty('compatMods').isPresent()) {
+        runtimeOnly fileTree(providers.gradleProperty('compatMods').get()) { include '*.jar' }
+    }
+    runtimeOnly providers.gradleProperty('hostJar').isPresent() ? files(providers.gradleProperty('hostJar').get()) : host
+    if (!providers.gradleProperty('withoutAe2').isPresent()) {
+        runtimeOnly providers.gradleProperty('ae2Jar').isPresent() ? files(providers.gradleProperty('ae2Jar').get()) : "maven.modrinth:ae2:${ae2_version}"
+        runtimeOnly 'maven.modrinth:guideme:21.1.19'
+    }
+}
+neoForge {
+    version = neo_version
+    runs {
+        client { client() }
+        gameTestServer {
+            type = 'gameTestServer'
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'zifeng_ae2_skills'
+            gameDirectory = file('run/tests')
+            if (providers.gradleProperty('saveFailureSmoke').isPresent()) {
+                systemProperty 'zifeng.ae2.testSaveFailure', 'true'
+                gameDirectory = file('run/save-failure-test')
+            }
+        }
+        configureEach {
+            logLevel = org.slf4j.event.Level.INFO
+        }
+    }
+    mods {
+        zifeng_ae2_skills { sourceSet(sourceSets.main) }
+    }
+}
+if (providers.gradleProperty('ae2Tests').isPresent()) {
+    sourceSets.main.java.srcDir 'src/gameTest/java'
+    sourceSets.main.resources.srcDir 'src/gameTest/resources'
+}
+if (providers.gradleProperty('clientSmoke').isPresent()) {
+    sourceSets.main.java.srcDir 'src/clientTest/java'
+    neoForge.runs.client.gameDirectory = file('run/client-smoke')
+}
+tasks.named('processResources') {
+    dependsOn 'generateContractIndex'
+    inputs.property 'version', project.version
+    filesMatching('META-INF/neoforge.mods.toml') { expand version: project.version }
+}
+def contractDir = layout.buildDirectory.dir('generated/contractResources')
+tasks.register('generateContractIndex') {
+    dependsOn 'compileJava'
+    inputs.files(sourceSets.main.output.classesDirs)
+    outputs.dir(contractDir)
+    doLast {
+        def names = []
+        sourceSets.main.output.classesDirs.each { root ->
+            fileTree(root).matching { include '**/*.class'; exclude '**/test/**' }.each { entry ->
+                names.add(root.toPath().relativize(entry.toPath()).toString().replace('\\', '/').replace('.class', ''))
+            }
+        }
+        def output = contractDir.get().file('zifeng-ae2-contract-classes.txt').asFile
+        output.parentFile.mkdirs()
+        output.text = names.sort().join('\n') + '\n'
+    }
+}
+sourceSets.main.resources.srcDir(contractDir)
+tasks.named('jar', Jar) {
+    exclude 'org/zifeng/ae2skills/test/**'
+    exclude 'data/zifeng_ae2_skills/structure/empty.nbt'
+    exclude 'legacy-1.5.3.nbt'
+    from('LICENSE')
+}

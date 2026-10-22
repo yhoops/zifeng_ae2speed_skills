@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.zifeng.ae2skills.mixin",
+  "plugin": "org.zifeng.ae2skills.compat.CompatibilityPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "host.SkillsMixin",
+    "ae2.MolecularAssemblerSpeedMixin",
+    "ae2.AssemblerTickMixin",
+    "ae2.CraftingCpuSpeedMixin",
+    "ae2.AeInstantCpuMixin",
+    "ae2.CpuLogicAccess",
+    "ae2.CraftingJobAccess",
+    "ae2.CraftingTaskAccess",
+    "ae2.CraftingTimeAccess",
+    "ae2.AeCpuClusterMixin",
+    "ae2.AeCraftingServiceMixin",
+    "ae2.AeCpuBlockMixin",
+    "ae2.UnlimitedCpuMixin"
+  ],
+  "client": ["host.SkillTreeScreenMixin", "ae2.CpuMenuMixin", "ae2.CraftConfirmMixin"],
+  "injectors": {"defaultRequire": 1}
+}

@@ -1,0 +1,43 @@
+# License: CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike 4.0 International).
+# Free to study, modify and redistribute for non-commercial use with credit to the
+# original author 子枫 (zifeng); derivatives must keep this license. See LICENSE.
+# Full text: https://creativecommons.org/licenses/by-nc-sa/4.0/
+modLoader="javafml"
+loaderVersion="[4,)"
+license="CC-BY-NC-SA-4.0"
+[[mods]]
+modId="zifeng_ae2_skills"
+version="${version}"
+displayName="Zifeng AE2 Skills"
+authors="子枫 (zifeng), contributors"
+description='''Four AE2 skills for the original Zifeng Skill Tree: assembler overclock, CPU overclock, instant crafting and independent split CPUs.'''
+[[mixins]]
+config="zifeng_ae2_skills.mixins.json"
+[[mixins]]
+config="zifeng_ae2_skills.converter.mixins.json"
+[[mixins]]
+config="zifeng_ae2_skills.compat.mixins.json"
+[[dependencies.zifeng_ae2_skills]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+side="BOTH"
+[[dependencies.zifeng_ae2_skills]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.234,21.2)"
+side="BOTH"
+[[dependencies.zifeng_ae2_skills]]
+modId="zifeng_s_custom_skill_tree"
+type="required"
+versionRange="[0,)"
+ordering="AFTER"
+side="BOTH"
+reason="需要原作者的子枫技能树本体 / Requires the original Zifeng Skill Tree."
+[[dependencies.zifeng_ae2_skills]]
+modId="ae2"
+type="required"
+versionRange="[0,)"
+ordering="AFTER"
+side="BOTH"
+reason="需要 Minecraft 1.21.1 NeoForge 版 AE2 / Requires AE2 for Minecraft 1.21.1 NeoForge."
