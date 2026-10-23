@@ -44,7 +44,7 @@ public class EffectChecks {
         check(Ae2Effects.scaledCpuStorage(1024) == 1024);
         check(Ae2Effects.scaledCpuCoProcessors(10000) == 10000);
         for (int level = 1; level <= 4; level++) {
-            Ae2Effects.update(player, level, level, level, level);
+            Ae2Effects.update(player, level, level, level, level, 0);
             check(Ae2Effects.getAssemblerSpeedMultiplier() == 1 + level);
             check(Ae2Effects.scaledCpuCoProcessors(3) == 4 * (1 + level) - 1);
             check(Ae2Effects.scaledCpuCoProcessors(10000) >= 10000);
@@ -52,9 +52,14 @@ public class EffectChecks {
             check(Ae2Effects.scaledCpuStorage(Long.MAX_VALUE / 2 + 1) == Long.MAX_VALUE);
             check(Ae2Effects.getInstantOpsPerTick() == 1 << level);
         }
-        Ae2Effects.update(player, 4, 4, 5, 5);
+        Ae2Effects.update(player, 4, 4, 5, 5, 0);
         check(Ae2Effects.scaledCpuStorage(1024) == Long.MAX_VALUE);
         check(Ae2Effects.scaledCpuCoProcessors(3) == Integer.MAX_VALUE - 1);
+        int[] divine = {1, 2, 8, 16, 128, 1024};
+        for (int level = 0; level <= 5; level++) {
+            Ae2Effects.update(player, 0, 0, 0, 0, level);
+            check(Ae2Effects.getDivineMultiplier() == divine[level]);
+        }
         Ae2Effects.remove(player);
         check(Ae2Effects.scaledCpuStorage(1024) == 1024);
         check(Ae2Effects.scaledCpuCoProcessors(10000) == 10000);
@@ -63,13 +68,28 @@ public class EffectChecks {
         long now = System.nanoTime();
         check(TickBudget.deadline(now) >= now);
         check(TickBudget.deadline(now + 50_000_000L) == now + 50_000_000L);
-        System.out.println("PASS: skill levels, native high-performance preservation, saturation, downgrade and budget");
+        System.out.println("PASS: skill levels, divine multipliers, native high-performance preservation, saturation, downgrade and budget");
     }
 }
 ''', encoding="utf-8")
+    # Minimal stubs for the only Minecraft types the checked classes touch (SkillDefinitions.icon).
+    stub_item = temp / "Item.java"
+    stub_item.write_text("package net.minecraft.world.item; public class Item {}", encoding="utf-8")
+    stub_items = temp / "Items.java"
+    stub_items.write_text(
+        "package net.minecraft.world.item;\n"
+        "public class Items {\n"
+        "    public static final Item CRAFTER = new Item();\n"
+        "    public static final Item COMPARATOR = new Item();\n"
+        "    public static final Item END_CRYSTAL = new Item();\n"
+        "    public static final Item NETHER_STAR = new Item();\n"
+        "    public static final Item AMETHYST_CLUSTER = new Item();\n"
+        "}\n", encoding="utf-8")
     run(java_tool("javac"), "-d", str(temp), str(source),
         str(ROOT / "src/main/java/org/zifeng/ae2skills/Ae2Effects.java"),
-        str(ROOT / "src/main/java/org/zifeng/ae2skills/TickBudget.java"))
+        str(ROOT / "src/main/java/org/zifeng/ae2skills/SkillDefinitions.java"),
+        str(ROOT / "src/main/java/org/zifeng/ae2skills/TickBudget.java"),
+        str(stub_item), str(stub_items))
     print(run(java_tool("java"), "-cp", str(temp), "EffectChecks").strip())
 
 version = next(line.split("=", 1)[1] for line in (ROOT / "gradle.properties").read_text().splitlines()
