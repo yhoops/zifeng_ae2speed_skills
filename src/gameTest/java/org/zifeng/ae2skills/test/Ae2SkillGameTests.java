@@ -51,7 +51,12 @@ public final class Ae2SkillGameTests {
     private static final BlockPos CPU = new BlockPos(1, 1, 1);
     private static final BlockPos PROVIDER = new BlockPos(3, 1, 1);
 
-    @GameTest(template = "empty", timeoutTicks = 600)
+    /**
+     * 三个用例共用进程级的 {@link Ae2Effects} / {@link TickBudget} 静态状态，必须分批次串行执行：
+     * 同一批次内的用例会互相清空对方的技能等级（{@code Ae2Effects.remove} 是全量重算），
+     * 从而产生与被测代码无关的随机失败。批次之间由 GameTest 框架保证顺序执行。
+     */
+    @GameTest(template = "empty", timeoutTicks = 600, batch = "zifeng_main")
     public static void realNetworkCraftingAndVirtualCpus(GameTestHelper helper) {
         helper.setBlock(CPU, AEBlocks.CRAFTING_STORAGE_1K.block());
         helper.setBlock(new BlockPos(2, 1, 1), AEBlocks.CREATIVE_ENERGY_CELL.block());
@@ -156,7 +161,9 @@ public final class Ae2SkillGameTests {
             InstantCrafting.tick(cpu.craftingLogic, energy, service);
         }
         void submit(CraftingCPUCluster cpu, ICraftingPlan plan) {
-            assertThat(service.submitJob(plan, null, cpu, true, IActionSource.empty()).successful(), "Native standalone submission must succeed");
+            assertThat(service.submitJob(plan, null, cpu, true, IActionSource.empty()).successful(),
+                    "Native standalone submission must succeed: busy=" + cpu.isBusy()
+                            + " storage=" + cpu.getAvailableStorage() + " physical=" + (cpu == physical));
         }
         TestPlan plan(Item output, long count, long bytes, KeyCounter used, Map<IPatternDetails, Long> steps) {
             return new TestPlan(stack(output, count), bytes, false, false, used, new KeyCounter(), new KeyCounter(), steps);
@@ -232,9 +239,11 @@ public final class Ae2SkillGameTests {
         void checkHostSkills() {
             var record = new org.zifeng.skilltree.data.PlayerSkillRecord(SKILL_OWNER);
             record.setSkillPoints(1_000_000);
-            String[] ids = {"ae_assembler_speed", "ae_cpu_speed", "ae_assembler_infinite", "ae_cpu_infinite"};
-            int[] caps = {4, 4, 5, 5};
-            long[] totals = {7500, 15000, 62000, 62000};
+            String[] ids = {"ae_assembler_speed", "ae_cpu_speed", "ae_assembler_infinite", "ae_cpu_infinite",
+                    org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE};
+            int[] caps = {4, 4, 5, 5, 5};
+            // 万机之神的加护是非等比费用：1000/5000/10000/50000/100000，合计 166000。
+            long[] totals = {7500, 15000, 62000, 62000, 166000};
             for (int i = 0; i < ids.length; i++) {
                 String id = ids[i];
                 assertThat(org.zifeng.skilltree.skill.Skills.ALL_SKILLS.contains(id)
@@ -254,8 +263,8 @@ public final class Ae2SkillGameTests {
             double refund = restored.resetSkill(ids[2]);
             assertThat(refund == totals[2] * org.zifeng.skilltree.Config.RESET_REFUND_RATE.get(), "Host refund uses addon cost table");
             UUID other = UUID.randomUUID();
-            Ae2Effects.update(SKILL_OWNER, 4, 3, 2, 5);
-            Ae2Effects.update(other, 1, 1, 1, 1);
+            Ae2Effects.update(SKILL_OWNER, 4, 3, 2, 5, 0);
+            Ae2Effects.update(other, 1, 1, 1, 1, 0);
             assertThat(Ae2Effects.getCpuInfiniteLevel() == 5 && Ae2Effects.getAssemblerSpeedLevel() == 4, "Global effects use highest enabled level");
             Ae2Effects.remove(SKILL_OWNER);
             assertThat(Ae2Effects.getCpuInfiniteLevel() == 1, "Logout recomputes remaining global maximum");
@@ -336,10 +345,13 @@ public final class Ae2SkillGameTests {
             } catch (java.io.IOException exception) { throw new AssertionError(exception); }
             assertThat(fixture.getString("SourceModVersion").equals("1.5.3"), "Fixture must come from the previous implementation");
             var record = org.zifeng.skilltree.data.PlayerSkillRecord.load(fixture.getCompound("Player"));
-            for (String id : org.zifeng.ae2skills.SkillDefinitions.IDS) {
+            // 1.5.3 存档只有当时存在的四个技能；万机之神的加护是本次新增，必须保持未学习状态。
+            for (String id : new String[]{"ae_assembler_speed", "ae_cpu_speed", "ae_assembler_infinite", "ae_cpu_infinite"}) {
                 assertThat(record.getLearnedPoints(id) == org.zifeng.ae2skills.SkillDefinitions.maxLevel(id)
                         && record.getActiveLevel(id) == 2, "Legacy learned and active levels must migrate");
             }
+            assertThat(record.getLearnedPoints(org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE) == 0,
+                    "A skill that did not exist in the legacy save must stay unlearned");
             assertThat(!record.isEnabled("ae_assembler_speed"), "Legacy disabled skill must stay disabled");
             var cpu = fixture.getCompound("Cpu");
             physical.readFromNBT(cpu, helper.getLevel().registryAccess());
@@ -516,15 +528,77 @@ public final class Ae2SkillGameTests {
         }
     }
     /**
+     * 「万机之神的加护」的服务端契约：倍率表、全局发布语义、激活门槛、成就数据。
+     *
+     * <p>这里刻意不搭真实的「供应器 + 机器 + 活跃任务」产线——那部分由
+     * {@code DivineGrace.tick} 的运行时判定负责，训练式复现已由 {@link #realNetworkCraftingAndVirtualCpus}
+     * 覆盖；本测试保证的是「没有活跃任务时绝不空转加速」这条最容易回归的边界。
+     */
+    @GameTest(template = "empty", timeoutTicks = 100, batch = "zifeng_divine")
+    public static void divineGraceSkillContract(GameTestHelper helper) {
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.DIVINE_CATEGORY_INDEX == org.zifeng.ae2skills.SkillDefinitions.HOST_CATEGORY_COUNT,
+                "The divine tab must be appended right after the host's 11 tabs");
+        int[] multipliers = {2, 8, 16, 128, 1024};
+        long[] costs = {1000L, 5000L, 10000L, 50000L, 100000L};
+        for (int level = 1; level <= 5; level++) {
+            helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.divineMultiplier(level) == multipliers[level - 1],
+                    "Divine multiplier table must be 2/8/16/128/1024 at level " + level);
+            helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.cost(org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, level - 1) == costs[level - 1],
+                    "Divine cost table must be non-geometric at level " + level);
+        }
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.maxLevel(org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE) == 5,
+                "Divine skill must cap at five levels");
+
+        // 全局发布语义（Ae2Effects 是进程级共享状态，因此串行放在主回归里验证，见 checkHostSkills）。
+        // 这里只验证「没有活跃任务就绝不加速」这条边界：DivineGrace 的激活判定完全由自身负责。
+        org.zifeng.ae2skills.divine.DivineGrace.reset();
+        org.zifeng.ae2skills.divine.DivineGrace.tick(helper.getLevel().getServer());
+        helper.assertTrue(org.zifeng.ae2skills.divine.DivineGrace.activeMultiplier() == 0,
+                "Divine grace must stay idle while no crafting job is active");
+        // 未激活时绝不留下「让路」标记，否则装配超频会被误伤（isAccelerated 以 activeMultiplier>0 为前提）。
+        helper.assertTrue(!org.zifeng.ae2skills.divine.DivineGrace.isAccelerated(null),
+                "An idle divine grace must never mark any machine as accelerated");
+
+        // 成就：JSON 必须真的被数据包加载，且存档级标记可持久化。
+        var server = helper.getLevel().getServer();
+        var holder = server.getAdvancements().get(org.zifeng.ae2skills.advancement.DivineAdvancements.ID);
+        helper.assertTrue(holder != null, "The divine advancement must be loaded from the mod datapack");
+        for (String path : new String[]{org.zifeng.ae2skills.SkillDefinitions.ACH_ASSEMBLER,
+                org.zifeng.ae2skills.SkillDefinitions.ACH_CPU}) {
+            helper.assertTrue(server.getAdvancements().get(org.zifeng.ae2skills.advancement.DivineAdvancements.id(path)) != null,
+                    "Advancement " + path + " must be loaded from the mod datapack");
+        }
+        // 「合成之神 / 算力之神」只是搬进神明页签，升级消耗必须保持原来的非神明档位，
+        // 否则把两个技能的成长曲线改掉了（isDivine 只对万机之神成立）。
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.inDivineTab(org.zifeng.ae2skills.SkillDefinitions.ASSEMBLER_INFINITE)
+                        && org.zifeng.ae2skills.SkillDefinitions.inDivineTab(org.zifeng.ae2skills.SkillDefinitions.CPU_INFINITE),
+                "Both renamed skills must live in the divine tab");
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.cost(org.zifeng.ae2skills.SkillDefinitions.ASSEMBLER_INFINITE, 0) == 2000L,
+                "Moving a skill into the divine tab must not change its cost curve");
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.cost(org.zifeng.ae2skills.SkillDefinitions.CPU_INFINITE, 4) == 64000L,
+                "Moving a skill into the divine tab must not change its cost curve");
+        var storage = server.overworld().getDataStorage();
+        var state = storage.computeIfAbsent(new net.minecraft.world.level.saveddata.SavedData.Factory<>(
+                org.zifeng.ae2skills.advancement.DivineAdvancements.State::new,
+                org.zifeng.ae2skills.advancement.DivineAdvancements.State::load),
+                "zifeng_ae2skills_test_divine_state");
+        var resaved = state.save(new CompoundTag(), helper.getLevel().registryAccess());
+        helper.assertTrue(!resaved.getBoolean(org.zifeng.ae2skills.advancement.DivineAdvancements.GRANTED_KEY),
+                "A fresh save must not have granted the advancement");
+        // 刻意不动 Ae2Effects：它是进程级共享状态，而 GameTest 同批次并行执行。
+        helper.succeed();
+    }
+
+    /**
      * 第三方 CPU 通用适配（形态 b）：一个<b>不继承</b> {@code CraftingCPUCluster} 的
      * {@link ICraftingCPU} 实现，正是原生 Mixin 命中不到、过去「装了别的模组就不生效」的那类。
      */
-    @GameTest(template = "empty", timeoutTicks = 100)
+    @GameTest(template = "empty", timeoutTicks = 100, batch = "zifeng_adapters")
     public static void genericThirdPartyCpuAdapters(GameTestHelper helper) {
         var thirdParty = new ThirdPartyCpu(4, 1024L);
 
         // 0) 技能全关（默认）→ 原样返回，零开销直通，行为与未装附属一致。
-        Ae2Effects.update(SKILL_OWNER, 0, 0, 0, 0);
+        Ae2Effects.update(SKILL_OWNER, 0, 0, 0, 0, 0);
         helper.assertTrue(CpuAdapterRegistry.wrap(thirdParty) == thirdParty, "All-off must pass the original CPU straight through");
         helper.assertTrue(!CpuAdapterRegistry.active(), "Adapter must be inactive while every skill is off");
 
@@ -532,7 +606,7 @@ public final class Ae2SkillGameTests {
         //    wrapAll 必须<b>整体退出并原样返回同一个集合对象</b>，绝不逐个包装。
         //    1.1.4 正是在这里出错——包装制造出 ECO 的 hasCpu(==) 认不出的陌生引用，
         //    导致 CPU 列表点击无响应、合成状态不显示。
-        Ae2Effects.update(SKILL_OWNER, 0, 2, 0, 5);
+        Ae2Effects.update(SKILL_OWNER, 0, 2, 0, 5, 0);
         helper.assertTrue(CpuAdapterRegistry.active(), "Adapter must be active once the CPU skills are on");
         helper.assertTrue(CpuAdapterRegistry.isForeign(thirdParty), "A self-owned ICraftingCPU must be detected as foreign");
         var withForeign = com.google.common.collect.ImmutableSet.<ICraftingCPU>of(thirdParty);
@@ -543,7 +617,7 @@ public final class Ae2SkillGameTests {
                 "A CPU set containing any foreign CPU must be returned unchanged (identity), never rewrapped");
 
         // 2) 装饰器本身的数值语义仍然正确（保留 wrap 供未来在确认安全时启用）。
-        Ae2Effects.update(SKILL_OWNER, 0, 2, 0, 0);
+        Ae2Effects.update(SKILL_OWNER, 0, 2, 0, 0, 0);
         var speedWrapped = CpuAdapterRegistry.wrap(thirdParty);
         helper.assertTrue(speedWrapped != thirdParty, "A third-party CPU must be wrapped while skills are on");
         helper.assertTrue(speedWrapped.getCoProcessors() > thirdParty.baseCoProcessors,
@@ -553,7 +627,7 @@ public final class Ae2SkillGameTests {
                 "CPU overclock alone must not inflate storage");
 
         // 3) 分裂算力满级 → 容量无上限，并行数取近似无限。
-        Ae2Effects.update(SKILL_OWNER, 0, 0, 0, 5);
+        Ae2Effects.update(SKILL_OWNER, 0, 0, 0, 5, 0);
         var unlimitedWrapped = CpuAdapterRegistry.wrap(thirdParty);
         helper.assertTrue(unlimitedWrapped.getAvailableStorage() == Long.MAX_VALUE,
                 "Infinite crafting must report unbounded storage for a third-party CPU");
@@ -561,7 +635,7 @@ public final class Ae2SkillGameTests {
                 "Full split level must report near-unlimited co-processors");
 
         // 4) 其余方法必须逐一委托给 inner（用哨兵值可观测地验证，而不是只看类型）。
-        Ae2Effects.update(SKILL_OWNER, 0, 2, 0, 1);
+        Ae2Effects.update(SKILL_OWNER, 0, 2, 0, 1, 0);
         var wrapped = CpuAdapterRegistry.wrap(thirdParty);
         helper.assertTrue(thirdParty.busy && wrapped.isBusy(), "isBusy must delegate to the wrapped CPU");
         helper.assertTrue(wrapped.getJobStatus() == thirdParty.sentinelStatus, "getJobStatus must delegate to the wrapped CPU");

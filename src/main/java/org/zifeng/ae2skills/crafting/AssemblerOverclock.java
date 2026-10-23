@@ -5,8 +5,10 @@ import appeng.api.networking.IGridNode;
 import appeng.api.networking.ticking.IGridTickable;
 import appeng.api.networking.ticking.TickRateModulation;
 import appeng.blockentity.crafting.MolecularAssemblerBlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import org.zifeng.ae2skills.Ae2Effects;
 import org.zifeng.ae2skills.TickBudget;
+import org.zifeng.ae2skills.divine.DivineGrace;
 
 /**
  * Extra native work cycles: each cycle retains the owning machine's power/material/output rules.
@@ -45,6 +47,8 @@ public final class AssemblerOverclock {
         int bonus = Ae2Effects.getAssemblerSpeedLevel();
         if (bonus == 0 || result == TickRateModulation.SLEEP || result == TickRateModulation.IDLE
                 || !supports(tickable, node)) return result;
+        // 「万机之神的加护」本 tick 已经在驱动这台机器时让路：两个技能不叠加同一份额外 tick。
+        if (tickable instanceof BlockEntity blockEntity && DivineGrace.isAccelerated(blockEntity)) return result;
         long began = System.nanoTime();
         long deadline = TickBudget.deadline(began);
         try {

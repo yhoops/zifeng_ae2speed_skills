@@ -49,12 +49,66 @@ public final class ClientSmoke {
             Method effect = SkillTreeScreen.class.getDeclaredMethod("skillAttrText", String.class, int.class, boolean.class);
             effect.setAccessible(true);
             if (!effect.invoke(screen, "ae_cpu_infinite", 5, false).equals("∞")) throw new AssertionError("Client must show infinite split effect");
-            ClientEffects.apply(new StatePayload(4, 4, 5, 5));
+            ClientEffects.apply(new StatePayload(4, 4, 5, 5, 5));
             if (!ClientEffects.value("ae_cpu_infinite", ClientEffects.level("ae_cpu_infinite")).equals("∞")) throw new AssertionError("Global state sync display");
+            // 「神明之力」页签是宿主 UI 的第 12 个页签；mixin 未应用时这里会是 11 项。
+            checkDivineCategory(screen);
             org.slf4j.LoggerFactory.getLogger("zifeng_ae2_skills").info("ADDON CLIENT SMOKE PASSED: CPU list rendered and tooltips checked; host UI and AE2 client mixins loaded");
         } catch (Throwable error) {
             org.slf4j.LoggerFactory.getLogger("zifeng_ae2_skills").error("ADDON CLIENT SMOKE FAILED", error);
         } finally { minecraft.stop(); }
+    }
+
+    /**
+     * 第 12 个页签「神明之力」是否真的被 mixin 扩出来。
+     *
+     * <p>宿主的页签数量是编译期内联的字面量 11，扩展靠 {@code @ModifyConstant} + {@code <clinit>} 注入。
+     * 注入一旦失效，游戏不会崩，只是找不到这个技能——所以必须直接断言数组长度与页签成员表。
+     */
+    private static void checkDivineCategory(SkillTreeScreen screen) throws ReflectiveOperationException {
+        var keys = SkillTreeScreen.class.getDeclaredField("CATEGORY_TITLE_KEYS");
+        keys.setAccessible(true);
+        String[] titles = (String[]) keys.get(null);
+        if (titles.length != org.zifeng.ae2skills.SkillDefinitions.CATEGORY_COUNT)
+            throw new AssertionError("Host tab table must be extended to " + org.zifeng.ae2skills.SkillDefinitions.CATEGORY_COUNT
+                    + " entries, got " + titles.length);
+        if (!org.zifeng.ae2skills.SkillDefinitions.DIVINE_CATEGORY_KEY.equals(titles[org.zifeng.ae2skills.SkillDefinitions.DIVINE_CATEGORY_INDEX]))
+            throw new AssertionError("The 12th tab must be the divine category: " + java.util.Arrays.toString(titles));
+        var colors = SkillTreeScreen.class.getDeclaredField("CATEGORY_COLORS");
+        colors.setAccessible(true);
+        int[] accent = (int[]) colors.get(null);
+        if (accent.length != org.zifeng.ae2skills.SkillDefinitions.CATEGORY_COUNT)
+            throw new AssertionError("Host tab color table must match the tab count, got " + accent.length);
+
+        Method categorySkills = SkillTreeScreen.class.getDeclaredMethod("categorySkills", int.class);
+        categorySkills.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var divine = (java.util.List<String>) categorySkills.invoke(null, org.zifeng.ae2skills.SkillDefinitions.DIVINE_CATEGORY_INDEX);
+        if (!divine.containsAll(org.zifeng.ae2skills.SkillDefinitions.DIVINE_TAB_SKILLS))
+            throw new AssertionError("Divine tab must contain all three divine skills: " + divine);
+        @SuppressWarnings("unchecked")
+        var global = (java.util.List<String>) categorySkills.invoke(null, 6);
+        for (String id : org.zifeng.ae2skills.SkillDefinitions.DIVINE_TAB_SKILLS) {
+            if (global.contains(id))
+                throw new AssertionError("Divine skills must not also appear in 寰宇法则: " + id + " in " + global);
+        }
+        for (String id : org.zifeng.ae2skills.SkillDefinitions.IDS)
+            if (!org.zifeng.ae2skills.SkillDefinitions.inDivineTab(id) && !global.contains(id))
+                throw new AssertionError("寰宇法则 must keep the non-divine addon skills: " + id + " missing");
+
+        // 搜索与提示都按 categoryIndexOf 归类，改循环上界后必须能认出第 12 个页签。
+        Method index = SkillTreeScreen.class.getDeclaredMethod("categoryIndexOf", String.class);
+        index.setAccessible(true);
+        if ((Integer) index.invoke(null, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE)
+                != org.zifeng.ae2skills.SkillDefinitions.DIVINE_CATEGORY_INDEX)
+            throw new AssertionError("Search/hint lookup must resolve the divine skill to tab 12");
+        Method text = SkillTreeScreen.class.getDeclaredMethod("skillAttrText", String.class, int.class, boolean.class);
+        text.setAccessible(true);
+        if (!text.invoke(screen, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 4, true).equals("×128"))
+            throw new AssertionError("Divine effect text must show the level multiplier: "
+                    + text.invoke(screen, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 4, true));
+        org.slf4j.LoggerFactory.getLogger("zifeng_ae2_skills").info(
+                "ADDON DIVINE TAB PASSED: 12 host tabs, divine skill isolated from 寰宇法则, multiplier text correct");
     }
 
     /**

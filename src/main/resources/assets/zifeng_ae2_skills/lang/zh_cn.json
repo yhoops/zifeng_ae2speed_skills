@@ -1,12 +1,16 @@
 {
   "skill.zifeng_s_custom_skill_tree.ae_assembler_speed.name": "装配超频（AE 合成速度）",
   "skill.zifeng_s_custom_skill_tree.ae_cpu_speed.name": "算力超频（AE 处理速度）",
-  "skill.zifeng_s_custom_skill_tree.ae_assembler_infinite.name": "无尽装配（AE 合成瞬发）",
-  "skill.zifeng_s_custom_skill_tree.ae_cpu_infinite.name": "分裂算力（AE 独立 CPU 与共享存储）",
+  "skill.zifeng_s_custom_skill_tree.ae_assembler_infinite.name": "合成之神的加护",
+  "skill.zifeng_s_custom_skill_tree.ae_cpu_infinite.name": "算力之神的加护",
+  "skill.zifeng_s_custom_skill_tree.ae_divine_machine_grace.name": "万机之神的加护",
   "skill.zifeng_s_custom_skill_tree.ae_assembler_speed.desc": "装配超频（AE 合成速度）：加速处理「合成样板」的机器（分子装配室）。\n1级 ×2 / 2级 ×3 / 3级 ×4 / 4级 ×5（消耗 500/1000/2000/4000）；进度与耗能同比放大，单件总耗能不变。\n每台机器每 tick 最多完成 1 次合成；全局生效，需 OP，取开启者最高等级。",
   "skill.zifeng_s_custom_skill_tree.ae_cpu_speed.desc": "算力超频（AE 处理速度）：提升合成 CPU 并行处理能力。\n1级 ×2 / 2级 ×3 / 3级 ×4 / 4级 ×5（消耗 1000/2000/4000/8000）。等效并行 =（原生并行 + 1）× 倍率 − 1；上限 4096。\n全局生效，需 OP，取开启者最高等级。\n【生效范围】仅支持 AE2 原本的合成 CPU（合成存储器）。其他模组自有的合成 CPU 不生效。",
-  "skill.zifeng_s_custom_skill_tree.ae_assembler_infinite.desc": "无尽装配：仅合成样板瞬发，无需分子装配室；加工样板仍需对应机器。\n每个 CPU 每 tick 配额：1级 2次 / 2级 4次 / 3级 8次 / 4级 16次；5级批量完成，超大订单分 tick 续跑。\n按批次扣材料和 CPU 派发能量，缺电暂停，正常返还容器。\n消耗：2000/4000/8000/16000/32000 点。全局生效，需 OP，取开启者最高等级。",
-  "skill.zifeng_s_custom_skill_tree.ae_cpu_infinite.desc": "同一实体 CPU 可同时执行多个独立任务：总 CPU 数 2/4/8/16，5 级按需无限。共享存储容量 ×2/×4/×8/×16，5 级无限。\n5 级时实体与虚拟 CPU 的并行处理单元均无限。材料、电力和加工机器速度仍受原有规则约束，派样按服务器时间预算续跑。\n各 CPU 可独立选用、查看与取消；关闭或降级后已有任务继续完成。\n【生效范围】仅支持 AE2 原本的合成 CPU（合成存储器）。其他模组自有的合成 CPU 不生效。",
+  "skill.zifeng_s_custom_skill_tree.ae_assembler_infinite.desc": "合成之神的加护：仅合成样板瞬发，无需分子装配室；加工样板仍需对应机器。\n每个 CPU 每 tick 配额：1级 2次 / 2级 4次 / 3级 8次 / 4级 16次；5级批量完成，超大订单分 tick 续跑。\n按批次扣材料和 CPU 派发能量，缺电暂停，正常返还容器。\n消耗：2000/4000/8000/16000/32000 点。全局生效，需 OP，取开启者最高等级；首次把该技能激活到 5 级时解锁同名成就（每个存档仅一次）。",
+  "skill.zifeng_s_custom_skill_tree.ae_cpu_infinite.desc": "算力之神的加护：同一实体 CPU 可同时执行多个独立任务：总 CPU 数 2/4/8/16，5 级按需无限。共享存储容量 ×2/×4/×8/×16，5 级无限。\n5 级时实体与虚拟 CPU 的并行处理单元均无限。材料、电力和加工机器速度仍受原有规则约束，派样按服务器时间预算续跑。\n各 CPU 可独立选用、查看与取消；关闭或降级后已有任务继续完成。\n【生效范围】仅支持 AE2 原本的合成 CPU（合成存储器）。其他模组自有的合成 CPU 不生效。首次把该技能激活到 5 级时解锁同名成就（每个存档仅一次）。",
+  "skill.zifeng_s_custom_skill_tree.ae_divine_machine_grace.desc": "万机之神的加护：AE 下单后，凡是这条产线上正在被样板驱动的机器，都会在被激活的每一 tick 里获得额外的原生工作次数。\n1级 ×2 / 2级 ×8 / 3级 ×16 / 4级 ×128 / 5级 ×1024（消耗 1000/5000/10000/50000/100000）。\n【生效条件】只有该网格上存在未暂停的合成任务、且样板确实推给了机器时才生效；任务完成、取消、暂停后立即停止。\n【兼容性】走 AE2 官方样板供应器与机器接口，任何能正常使用 AE 样板的机器都会被自动识别，无需逐个适配；机器自身的耗电、产出与库存规则全部保留。\n单台机器每 tick 的额外次数受服务器时间预算与硬上限约束，慢机器上会按最接近的倍率实际执行。\n全局生效，需 OP，取开启者最高等级；首次把该技能激活到 5 级时解锁同名成就（每个存档仅一次）。",
+  "ui.zifeng_s_custom_skill_tree.col_divine": "神明之力",
+  "ui.zifeng_ae2_skills.type_divine": "诸神",
   "ui.zifeng_s_custom_skill_tree.ae_cpu_at": "CPU (%s, %s, %s)",
   "ui.zifeng_s_custom_skill_tree.ae_virtual_cpu": "%s · 分裂 %s",
   "ui.zifeng_ae2_skills.disabled": "未生效",
@@ -16,5 +20,11 @@
   "ui.zifeng_ae2_skills.ae_off": "使用 AE 能量: 关闭（点击开启）",
   "ui.zifeng_ae2_skills.ae_not_connected": "⚠ 未连接到 ME 网络（相邻 6 面需紧贴 AE 线缆或设备）",
   "ui.zifeng_ae2_skills.server_effect": "服务器当前：%s",
-  "ui.zifeng_ae2_skills.cpu_storage_format_fallback": "（容量显示异常，已使用备用格式；合成功能不受影响。反馈时请附上 logs/latest.log）"
+  "ui.zifeng_ae2_skills.cpu_storage_format_fallback": "（容量显示异常，已使用备用格式；合成功能不受影响。反馈时请附上 logs/latest.log）",
+  "advancement.zifeng_ae2_skills.divine_machine_grace.title": "万机之神的加护",
+  "advancement.zifeng_ae2_skills.divine_machine_grace.description": "首次将「万机之神的加护」激活到 5 级：整条 AE 产线在你的号令下以千倍速率运转。",
+  "advancement.zifeng_ae2_skills.divine_assembler_grace.title": "合成之神的加护",
+  "advancement.zifeng_ae2_skills.divine_assembler_grace.description": "首次将「合成之神的加护」激活到 5 级：合成样板无需机器即可瞬发成批。",
+  "advancement.zifeng_ae2_skills.divine_cpu_grace.title": "算力之神的加护",
+  "advancement.zifeng_ae2_skills.divine_cpu_grace.description": "首次将「算力之神的加护」激活到 5 级：同一台 CPU 上并行的任务再无上限。"
 }

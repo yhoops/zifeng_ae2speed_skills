@@ -12,7 +12,7 @@ displayName="Zifeng AE2 Skills"
 logoFile="logo.png"
 displayURL="https://github.com/yhoops/zifeng_ae2speed_skills"
 authors="子枫 (zifeng), contributors"
-description='''Four AE2 skills for the original Zifeng Skill Tree: assembler overclock, CPU overclock, instant crafting and independent split CPUs. Also powers the skill point converter from an adjacent ME network to generate skill points using AE energy.'''
+description='''Five AE2 skills for the original Zifeng Skill Tree: assembler overclock, CPU overclock, instant crafting, independent split CPUs, and Divine Grace of the Myriad-Machine God (a 12th "Divine Power" tab that accelerates every machine on an active AE crafting line). Also powers the skill point converter from an adjacent ME network to generate skill points using AE energy.'''
 [[mixins]]
 config="zifeng_ae2_skills.mixins.json"
 [[mixins]]

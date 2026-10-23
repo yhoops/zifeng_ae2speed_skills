@@ -1,0 +1,27 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:amethyst_cluster"
+    },
+    "title": {
+      "translate": "advancement.zifeng_ae2_skills.divine_cpu_grace.title"
+    },
+    "description": {
+      "translate": "advancement.zifeng_ae2_skills.divine_cpu_grace.description"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "first_activation": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "first_activation"
+    ]
+  ]
+}
