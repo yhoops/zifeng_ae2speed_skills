@@ -39,6 +39,23 @@ public abstract class SkillTreeScreenMixin {
         return original.copy().append("\n").append(Component.translatable("ui.zifeng_ae2_skills.server_effect",
                 ClientEffects.value(id, ClientEffects.level(id))));
     }
+    /**
+     * 费用千分位。宿主 {@code fmtCost} 的原文是「整数就 {@code String.valueOf((long)d)}」，
+     * 于是 1,000,000 会被画成裸露的 {@code 1000000}，在按钮上挤成一串。
+     *
+     * <p>阈值刻意取 100000：宿主现有技能费用最高 32000，加上千分位对它们毫无变化（零回归）；
+     * 宿主自身最大的费用常量是 720000（{@code getGiftCost} 的 gift_*_amp 档），
+     * 会一并变成 {@code 720,000}——纯显示美化，不改任何数值语义。
+     *
+     * <p>非整数值直接放行，交回宿主原来的 {@code %.1f} 分支，避免把小数费用截断。
+     * 该方法全部 12 处调用点的实参都来自 {@code Skills.getGlobalCost / getGiftCost /
+     * getFishingCost / nextCostLocal}，不会误伤非费用文本。
+     */
+    @Inject(method = "fmtCost", at = @At("RETURN"), cancellable = true, require = 1)
+    private static void addon$groupDigits(double value, CallbackInfoReturnable<String> ci) {
+        if (value < 100_000D || value != Math.floor(value)) return;
+        ci.setReturnValue(String.format(java.util.Locale.ROOT, "%,d", (long) value));
+    }
     @Inject(method = "tooltipFingerprint", at = @At("RETURN"), cancellable = true)
     private void addon$invalidate(SkillButton button, CallbackInfoReturnable<Integer> ci) {
         if (SkillDefinitions.contains(button.skillId())) ci.setReturnValue(31 * ci.getReturnValue() + ClientEffects.revision());

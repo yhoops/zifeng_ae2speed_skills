@@ -18,6 +18,7 @@ public final class Addon {
             return;
         }
         bus.addListener(StatePayload::register);
+        bus.addListener(org.zifeng.ae2skills.network.DivineThunderS2CPacket::register);
         // AE 供电：契约不匹配时自行禁用，不影响上面四个技能
         if (AePowerMixinPlugin.converterContractOk()) {
             bus.addListener(AePowerToggleC2SPacket::register);

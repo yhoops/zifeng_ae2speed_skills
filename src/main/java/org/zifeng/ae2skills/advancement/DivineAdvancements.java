@@ -47,9 +47,9 @@ public final class DivineAdvancements {
      * 保持不变才能让老存档「已发放」状态继续生效、不会被重复触发。
      */
     public static final String GRANTED_KEY = "Granted";
-    /** 三项成就的后缀表，用于序列化时逐一落盘。 */
-    private static final List<String> ALL_PATHS = List.of(
-            SkillDefinitions.ACH_MACHINE, SkillDefinitions.ACH_ASSEMBLER, SkillDefinitions.ACH_CPU);
+    /** 四项成就的后缀表，用于序列化时逐一落盘。 */
+    private static final List<String> ALL_PATHS = List.of(SkillDefinitions.ACH_MACHINE,
+            SkillDefinitions.ACH_TRANSCEND, SkillDefinitions.ACH_ASSEMBLER, SkillDefinitions.ACH_CPU);
     /** 本次服务器运行内已经确认发放过的成就，用于跳过每 tick 的存档查询。 */
     private static final Set<String> GRANTED_THIS_SESSION = ConcurrentHashMap.newKeySet();
     private DivineAdvancements() {}
@@ -101,26 +101,43 @@ public final class DivineAdvancements {
     /** 存档重置（换存档/回滚）后需要重新允许发放；由服务器停止事件调用。 */
     public static void resetCache() { GRANTED_THIS_SESSION.clear(); }
 
-    /** 由技能状态刷新调用；只有该玩家的对应技能真的达到满级时才进入。 */
-    public static void grant(ServerPlayer player, String skillId) {
-        String path = SkillDefinitions.achievementPath(skillId);
-        if (path == null || GRANTED_THIS_SESSION.contains(path)) return;
+    /**
+     * 按「技能 + 当前等级」发放对应的满级成就。
+     * <p>调用点在每 tick 的状态刷新里，因此这里必须先做等级与缓存的短路；
+     * 真正的「只发一次」仍由存档 NBT 保证。
+     *
+     * @return 本次调用是否<b>真的</b>发放了成就（用于雷声等一次性演出；
+     *         已发放过、等级不够、数据包缺失都返回 {@code false}）
+     */
+    public static boolean grant(ServerPlayer player, String skillId, int level) {
+        return grantPath(player, SkillDefinitions.achievementPathFor(skillId, level));
+    }
+
+    /** 直接按成就后缀发放；{@code null} 表示该等级还没到任何门槛。 */
+    public static boolean grantPath(ServerPlayer player, String path) {
+        if (path == null || GRANTED_THIS_SESSION.contains(path)) return false;
         MinecraftServer server = player.getServer();
-        if (server == null) return;
+        if (server == null) return false;
         State state = server.overworld().getDataStorage().computeIfAbsent(
                 new SavedData.Factory<>(State::new, State::load), DATA_NAME);
-        if (state.granted(path)) { GRANTED_THIS_SESSION.add(path); return; }
+        if (state.granted(path)) { GRANTED_THIS_SESSION.add(path); return false; }
         ResourceLocation advancementId = id(path);
         AdvancementHolder advancement = server.getAdvancements().get(advancementId);
         if (advancement == null) {
             // 数据包缺失/被其它数据包覆盖：不静默，留一条可诊断的日志。
             LOG.warn("成就 {} 未在数据包中加载，无法发放；请检查本模组的数据包是否被覆盖 / "
                     + "Advancement {} is missing from the loaded datapack", advancementId, advancementId);
-            return;
+            return false;
         }
         state.markGranted(path);
         GRANTED_THIS_SESSION.add(path);
         player.getAdvancements().award(advancement, CRITERION);
+        return true;
+    }
+
+    /** 按技能 id 发放「当前等级对应的」成就；保留旧签名供既有调用与测试。 */
+    public static void grant(ServerPlayer player, String skillId) {
+        grantPath(player, SkillDefinitions.achievementPath(skillId));
     }
 
     /** 万机之神的旧入口；保留以兼容既有调用。 */

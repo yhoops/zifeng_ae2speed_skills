@@ -38,7 +38,8 @@ public final class Ae2Effects {
     public static int[] snapshot() { return LEVELS.clone(); }
     public static void update(UUID player, int a, int c, int ai, int ci, int dv) {
         a = Math.clamp(a, 0, 4); c = Math.clamp(c, 0, 4);
-        ai = Math.clamp(ai, 0, 5); ci = Math.clamp(ci, 0, 5); dv = Math.clamp(dv, 0, 5);
+        ai = Math.clamp(ai, 0, 5); ci = Math.clamp(ci, 0, 5);
+        dv = Math.clamp(dv, 0, SkillDefinitions.DIVINE_MAX_LEVEL);
         int[] old = PLAYERS.get(player);
         if (a == 0 && c == 0 && ai == 0 && ci == 0 && dv == 0) { remove(player); return; }
         if (old != null && old[0] == a && old[1] == c && old[2] == ai && old[3] == ci && old[4] == dv) return;

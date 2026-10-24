@@ -10,6 +10,7 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.zifeng.ae2skills.advancement.DivineAdvancements;
+import org.zifeng.ae2skills.divine.DivineThunder;
 import org.zifeng.skilltree.data.PlayerSkillRecord;
 import org.zifeng.skilltree.data.PlayerSkillSavedData;
 
@@ -26,11 +27,14 @@ public final class EffectEvents {
         Ae2Effects.update(player.getUUID(), active(record, SkillDefinitions.ASSEMBLER_SPEED),
                 active(record, SkillDefinitions.CPU_SPEED), active(record, SkillDefinitions.ASSEMBLER_INFINITE),
                 active(record, SkillDefinitions.CPU_INFINITE), divine);
-        // 成就只在存档内第一次把该技能真正激活到满级时发放一次；其余等级不做任何事。
-        // 神明之力页签的三个技能各有一个同名成就，满级条件按各自 maxLevel 判定。
+        // 成就只在存档内第一次把该技能真正激活到对应门槛时发放一次；其余等级不做任何事。
+        // 万机之神有 5 级 / 6 级两道门槛（5 级门槛钉成常量，不随上限变化），另外两个技能只有满级一道。
         for (String id : SkillDefinitions.DIVINE_TAB_SKILLS) {
             int level = SkillDefinitions.DIVINE_MACHINE.equals(id) ? divine : active(record, id);
-            if (level >= SkillDefinitions.maxLevel(id)) DivineAdvancements.grant(player, id);
+            if (DivineAdvancements.grant(player, id, level) && SkillDefinitions.DIVINE_MACHINE.equals(id)) {
+                // 只有第 6 级这道门槛配雷声；5 级成就保持 1.1.7 的原样体验。
+                if (level >= SkillDefinitions.DIVINE_MAX_LEVEL) DivineThunder.announce(player);
+            }
         }
     }
     @SubscribeEvent(priority = EventPriority.HIGHEST)

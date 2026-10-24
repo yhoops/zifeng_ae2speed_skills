@@ -13,5 +13,8 @@ public final class DivineEvents {
     @SubscribeEvent
     public static void tick(ServerTickEvent.Pre event) { DivineGrace.tick(event.getServer()); }
     @SubscribeEvent
-    public static void stop(ServerStoppedEvent event) { DivineGrace.reset(); }
+    public static void stop(ServerStoppedEvent event) {
+        DivineGrace.reset();
+        DivineTranscend.reset();
+    }
 }

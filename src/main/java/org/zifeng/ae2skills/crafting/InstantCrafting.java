@@ -18,9 +18,8 @@ import java.util.List;
 
 /** Crafting-table patterns only. Processing patterns always stay in AE2's normal executor. */
 public final class InstantCrafting {
-    private static int finalDeliveryDepth;
     private InstantCrafting() {}
-    public static boolean isDeliveringFinalOutput() { return finalDeliveryDepth > 0; }
+    public static boolean isDeliveringFinalOutput() { return CraftingDelivery.isDeliveringFinalOutput(); }
 
     /** Pattern cursor survives time slices; blocked early entries cannot starve a later recipe. */
     public static final class Cursor {
@@ -148,21 +147,8 @@ public final class InstantCrafting {
         }
     }
 
+    /** 三级兜底投递已抽到 {@link CraftingDelivery}，与「万机之神的加护 6 级瞬成」共用同一份。 */
     private static void deliver(CpuExecution logic, AEKey key, long amount) {
-        boolean isFinal = key.matches(logic.skillFinalOutput());
-        long remaining = amount - logic.skillInsert(key, amount, Actionable.MODULATE);
-        // A standalone terminal order has no requester: native insert returns 0 even after
-        // accepting the completion. Its output belongs in ME storage, not in a failed-job branch.
-        if (remaining > 0 && logic.skillGrid() != null) {
-            if (isFinal) finalDeliveryDepth++;
-            try {
-                remaining -= logic.skillGrid().getStorageService().getInventory()
-                        .insert(key, remaining, Actionable.MODULATE, logic.skillSource());
-            } finally {
-                if (isFinal) finalDeliveryDepth--;
-            }
-        }
-        // Full storage must keep the output, including after the native job has already completed.
-        if (remaining > 0) logic.skillInventory().insert(key, remaining, Actionable.MODULATE);
+        CraftingDelivery.deliver(logic, key, amount);
     }
 }

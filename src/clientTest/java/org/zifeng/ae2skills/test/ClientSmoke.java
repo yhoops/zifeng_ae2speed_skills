@@ -53,6 +53,7 @@ public final class ClientSmoke {
             if (!ClientEffects.value("ae_cpu_infinite", ClientEffects.level("ae_cpu_infinite")).equals("∞")) throw new AssertionError("Global state sync display");
             // 「神明之力」页签是宿主 UI 的第 12 个页签；mixin 未应用时这里会是 11 项。
             checkDivineCategory(screen);
+            checkCostFormatting();
             org.slf4j.LoggerFactory.getLogger("zifeng_ae2_skills").info("ADDON CLIENT SMOKE PASSED: CPU list rendered and tooltips checked; host UI and AE2 client mixins loaded");
         } catch (Throwable error) {
             org.slf4j.LoggerFactory.getLogger("zifeng_ae2_skills").error("ADDON CLIENT SMOKE FAILED", error);
@@ -107,8 +108,46 @@ public final class ClientSmoke {
         if (!text.invoke(screen, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 4, true).equals("×128"))
             throw new AssertionError("Divine effect text must show the level multiplier: "
                     + text.invoke(screen, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 4, true));
+        // 第 6 级是性质变化，不是更高倍率：必须读作「瞬成」，且第 5 级的倍率文案一字不能动。
+        if (!text.invoke(screen, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 5, true).equals("×1024"))
+            throw new AssertionError("Level five must keep the multiplier text: "
+                    + text.invoke(screen, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 5, true));
+        String instant = net.minecraft.network.chat.Component
+                .translatable("ui.zifeng_ae2_skills.instant").getString();
+        if (!text.invoke(screen, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 6, true).equals(instant))
+            throw new AssertionError("Level six must read as instant completion: "
+                    + text.invoke(screen, org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 6, true));
         org.slf4j.LoggerFactory.getLogger("zifeng_ae2_skills").info(
                 "ADDON DIVINE TAB PASSED: 12 host tabs, divine skill isolated from 寰宇法则, multiplier text correct");
+    }
+
+    /**
+     * 费用显示：第 6 级的 1,000,000 必须带千分位，而不能是裸露的 1000000；
+     * 同时 32000 及以下必须与宿主原样一致（这条断言就是「没有回归」本身）。
+     *
+     * <p>直接打宿主私有的 {@code fmtCost}，因此注入点失效时会立刻 AssertionError，
+     * 而不是等到玩家看到一串数字才发现。
+     */
+    private static void checkCostFormatting() throws ReflectiveOperationException {
+        Method fmt = SkillTreeScreen.class.getDeclaredMethod("fmtCost", double.class);
+        fmt.setAccessible(true);
+        Object[][] cases = {
+                {1_000_000D, "1,000,000"},
+                {720_000D, "720,000"},   // 宿主 getGiftCost 的最高档
+                {100_000D, "100,000"},
+                {32_000D, "32000"},      // 本模组 1.1.7 的最高费用，必须原样
+                {99_999D, "99999"},
+                {7_500D, "7500"},
+                {0D, "0"},
+                {1500.5D, "1500.5"},     // 非整数走宿主原来的 %.1f
+        };
+        for (Object[] c : cases) {
+            String actual = (String) fmt.invoke(null, (Double) c[0]);
+            if (!c[1].equals(actual))
+                throw new AssertionError("fmtCost(" + c[0] + ") = " + actual + ", expected " + c[1]);
+        }
+        org.slf4j.LoggerFactory.getLogger("zifeng_ae2_skills").info(
+                "ADDON COST FORMAT PASSED: 1,000,000 grouped, 32000 and below untouched, decimals preserved");
     }
 
     /**

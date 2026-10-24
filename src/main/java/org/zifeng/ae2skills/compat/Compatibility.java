@@ -162,11 +162,18 @@ public final class Compatibility {
                     }
                     if (ann.desc.endsWith("/Invoker;")) requireMethod(target, (String) annotationValue(ann, "value"), method.desc);
                     if (annotationValue(ann, "method") instanceof List<?> selectors) {
+                        // require=0 是可选项：宿主 1.5.5 才有的入口在 1.5.0 上必然缺席，Mixin 自身容忍这种缺席。
+                        // 预检若把它当缺失目标，就会在本来能正常工作的宿主上拒绝加载整个附属。
+                        // require=0 marks an optional injection; Mixin itself tolerates an absent target.
+                        boolean optional = Integer.valueOf(0).equals(annotationValue(ann, "require"));
                         for (Object selector : selectors) {
                             String s = selector.toString();
                             int desc = s.indexOf('(');
-                            if (desc >= 0) requireMethod(target, s.substring(0, desc), s.substring(desc));
-                            else if (node.methods.stream().noneMatch(m -> m.name.equals(s))) PROBLEMS.add("缺少混入目标 / Missing hook: " + target + "." + s);
+                            if (desc >= 0) {
+                                if (!optional) requireMethod(target, s.substring(0, desc), s.substring(desc));
+                            } else if (!optional && node.methods.stream().noneMatch(m -> m.name.equals(s))) {
+                                PROBLEMS.add("缺少混入目标 / Missing hook: " + target + "." + s);
+                            }
                         }
                         Object atValue = annotationValue(ann, "at");
                         List<?> ats = atValue instanceof List<?> list ? list : atValue == null ? List.of() : List.of(atValue);
@@ -182,7 +189,7 @@ public final class Compatibility {
                                 }
                             }
                             int ordinal = annotationValue(at, "ordinal") instanceof Integer i ? Math.max(0, i) : 0;
-                            if (matches <= ordinal) PROBLEMS.add("缺少注入位置 / Missing injection site: " + target + " -> " + expected);
+                            if (matches <= ordinal && !optional) PROBLEMS.add("缺少注入位置 / Missing injection site: " + target + " -> " + expected);
                         }
                     }
                 }

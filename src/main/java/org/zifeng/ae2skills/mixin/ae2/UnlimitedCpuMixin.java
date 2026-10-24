@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.zifeng.ae2skills.Ae2Effects;
 import org.zifeng.ae2skills.crafting.UnlimitedDispatch;
+import org.zifeng.ae2skills.divine.DivineTranscend;
 
 @Mixin(value = CraftingCpuLogic.class, remap = false)
 public abstract class UnlimitedCpuMixin {
@@ -31,7 +32,14 @@ public abstract class UnlimitedCpuMixin {
             target = "Lappeng/crafting/execution/CraftingCpuLogic;executeCrafting(ILappeng/me/service/CraftingService;Lappeng/api/networking/energy/IEnergyService;Lnet/minecraft/world/level/Level;)I"))
     private int addon$dispatch(CraftingCpuLogic logic, int quota, CraftingService service, IEnergyService energy, Level level) {
         if (Ae2Effects.getCpuInfiniteLevel() < 5) return logic.executeCrafting(quota, service, energy, level);
-        UnlimitedDispatch.tick(logic, addon$dispatch, service, energy);
+        // 5 级分裂算力不再走原生 executeCrafting，而是自己直连 pushPattern。这里必须补上同一套
+        // 「正在推送的 CPU」标记，否则「万机之神的加护」6 级的取证与上锁会在终点玩家身上整体失效。
+        DivineTranscend.enterPush(logic);
+        try {
+            UnlimitedDispatch.tick(logic, addon$dispatch, service, energy);
+        } finally {
+            DivineTranscend.exitPush();
+        }
         return 0;
     }
 }

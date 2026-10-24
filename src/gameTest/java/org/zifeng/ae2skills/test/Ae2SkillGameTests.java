@@ -236,14 +236,66 @@ public final class Ae2SkillGameTests {
                 service.removeGlobalCraftingProvider(provider);
             }
         }
+        void prepareTranscend() {
+            grid.getStorageService().addGlobalStorageProvider(mounts -> mounts.mount(memory, 0));
+            var encoded = AEItems.PROCESSING_PATTERN.stack();
+            AEProcessingPattern.encode(encoded, List.of(stack(Items.COBBLESTONE, 1)), List.of(stack(Items.DIAMOND, 1)));
+            install(3, encoded);
+            processing = new AEProcessingPattern(AEItemKey.of(encoded));
+        }
+
+        long receiverCobblestone() {
+            if (!(helper.getBlockEntity(new BlockPos(4, 1, 1)) instanceof net.minecraft.world.Container container)) return -1;
+            long total = 0;
+            for (int slot = 0; slot < container.getContainerSize(); slot++) {
+                ItemStack stack = container.getItem(slot);
+                if (stack.is(Items.COBBLESTONE)) total += stack.getCount();
+            }
+            return total;
+        }
+
+        /** 第一步：6 级生效后开单，只允许 1 批真正推给机器。 */
+        void transcendPushVerificationBatch() {
+            clear();
+            Ae2Effects.enableDivineGrace(SKILL_OWNER, 6);
+            add(Items.COBBLESTONE, 100);
+            submit(physical, plan(Items.DIAMOND, 100, 1000, keys(Items.COBBLESTONE, 100), Map.of(processing, 100L)));
+            TickBudget.markTickStart();
+            physical.craftingLogic.tickCraftingLogic(grid.getEnergyService(), service);
+            long pushed = receiverCobblestone();
+            assertThat(pushed == 1, "Verification must let exactly one batch reach the machine, pushed=" + pushed);
+            assertThat(physical.craftingLogic.getWaitingFor(AEItemKey.of(Items.DIAMOND)) == 1,
+                    "The verification batch must be registered as waiting for its product");
+        }
+
+        /** 第二步：机器做完这一批，产物按 AE2 真实路径回到网络（CPU 的 waitingFor 优先接走）。 */
+        void transcendReturnProduct() {
+            long accepted = grid.getStorageService().getInventory()
+                    .insert(AEItemKey.of(Items.DIAMOND), 1, Actionable.MODULATE, IActionSource.empty());
+            assertThat(accepted == 1, "The returned product must be consumed by the crafting job, accepted=" + accepted);
+        }
+
+        /** 第三步：取证成功之后，剩下 99 批应当一次性结清，机器不再参与。 */
+        void transcendExpectInstant() {
+            TickBudget.markTickStart();
+            physical.craftingLogic.tickCraftingLogic(grid.getEnergyService(), service);
+            assertThat(!physical.isBusy(), "A verified processing pattern must finish the whole order");
+            assertThat(stored(Items.DIAMOND) == 100, "Instant settlement must deliver every batch, stored=" + stored(Items.DIAMOND));
+            assertThat(receiverCobblestone() == 1, "Settled batches must never be sent to the machine again");
+            clear();
+            Ae2Effects.enableDivineGrace(SKILL_OWNER, 0);
+        }
+
         void checkHostSkills() {
             var record = new org.zifeng.skilltree.data.PlayerSkillRecord(SKILL_OWNER);
-            record.setSkillPoints(1_000_000);
+            // 买到全部技能的满级共需 1,312,500 点（万机之神的 6 级单级就要 1,000,000），
+            // 因此这里必须给到 2,000,000；给 1,000,000 会让 learnSkill 在第 6 级前中断。
+            record.setSkillPoints(2_000_000);
             String[] ids = {"ae_assembler_speed", "ae_cpu_speed", "ae_assembler_infinite", "ae_cpu_infinite",
                     org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE};
-            int[] caps = {4, 4, 5, 5, 5};
-            // 万机之神的加护是非等比费用：1000/5000/10000/50000/100000，合计 166000。
-            long[] totals = {7500, 15000, 62000, 62000, 166000};
+            int[] caps = {4, 4, 5, 5, 6};
+            // 万机之神的加护是非等比费用：1000/5000/10000/50000/100000/1000000，合计 1,166,000。
+            long[] totals = {7500, 15000, 62000, 62000, 1_166_000L};
             for (int i = 0; i < ids.length; i++) {
                 String id = ids[i];
                 assertThat(org.zifeng.skilltree.skill.Skills.ALL_SKILLS.contains(id)
@@ -534,20 +586,62 @@ public final class Ae2SkillGameTests {
      * {@code DivineGrace.tick} 的运行时判定负责，训练式复现已由 {@link #realNetworkCraftingAndVirtualCpus}
      * 覆盖；本测试保证的是「没有活跃任务时绝不空转加速」这条最容易回归的边界。
      */
+    /**
+     * 「万机之神」6 级瞬成的端到端回归：真实样板供应器 + 真实合成 CPU。
+     * <p>流程刻意复刻真人操作顺序：先让机器做 1 批（此时该样板被锁住），再把这一批的产物
+     * 送回网络（AE2 的真实回传路径），然后下一次 tick 应当把剩下 99 批一次性结清。
+     */
+    @GameTest(template = "empty", timeoutTicks = 200, batch = "zifeng_transcend")
+    public static void divineTranscendSettlesVerifiedPattern(GameTestHelper helper) {
+        helper.setBlock(CPU, AEBlocks.CRAFTING_STORAGE_1K.block());
+        helper.setBlock(new BlockPos(2, 1, 1), AEBlocks.CREATIVE_ENERGY_CELL.block());
+        helper.setBlock(PROVIDER, AEBlocks.PATTERN_PROVIDER.block());
+        // 样板供应器要把材料推给「机器」：放一个箱子当接收方，就能观察真实推送行为。
+        helper.setBlock(new BlockPos(4, 1, 1), net.minecraft.world.level.block.Blocks.CHEST);
+        var fixture = new Fixture(helper);
+        helper.startSequence()
+                .thenWaitUntil(fixture::awaitNetwork)
+                .thenExecute(fixture::prepareTranscend)
+                .thenExecute(fixture::transcendPushVerificationBatch)
+                .thenIdle(2)
+                .thenExecute(fixture::transcendReturnProduct)
+                .thenIdle(2)
+                .thenExecute(fixture::transcendExpectInstant)
+                .thenExecute(() -> Ae2Effects.remove(SKILL_OWNER))
+                .thenSucceed();
+    }
+
     @GameTest(template = "empty", timeoutTicks = 100, batch = "zifeng_divine")
     public static void divineGraceSkillContract(GameTestHelper helper) {
         helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.DIVINE_CATEGORY_INDEX == org.zifeng.ae2skills.SkillDefinitions.HOST_CATEGORY_COUNT,
                 "The divine tab must be appended right after the host's 11 tabs");
-        int[] multipliers = {2, 8, 16, 128, 1024};
-        long[] costs = {1000L, 5000L, 10000L, 50000L, 100000L};
-        for (int level = 1; level <= 5; level++) {
+        int[] multipliers = {2, 8, 16, 128, 1024, 1024};
+        long[] costs = {1000L, 5000L, 10000L, 50000L, 100000L, 1000000L};
+        for (int level = 1; level <= 6; level++) {
             helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.divineMultiplier(level) == multipliers[level - 1],
-                    "Divine multiplier table must be 2/8/16/128/1024 at level " + level);
+                    "Divine multiplier table must be 2/8/16/128/1024/1024 at level " + level);
             helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.cost(org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, level - 1) == costs[level - 1],
                     "Divine cost table must be non-geometric at level " + level);
         }
-        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.maxLevel(org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE) == 5,
-                "Divine skill must cap at five levels");
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.maxLevel(org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE) == 6,
+                "Divine skill must cap at six levels");
+        // 第 6 级不是更高倍率，只是解锁瞬成；倍率与 5 级持平，不能悄悄变成 ×2048。
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.divineMultiplier(6) == 1024,
+                "Level 6 must keep the level-5 multiplier; its effect is instant completion, not a bigger factor");
+        // 5 级成就的门槛被钉成常量 5：上限提到 6 之后，已有存档必须还能拿到旧的 5 级成就。
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.ACH_MACHINE_LEVEL == 5,
+                "The level-5 advancement threshold must stay pinned at 5 after the cap rises");
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.ACH_MACHINE.equals(
+                        org.zifeng.ae2skills.SkillDefinitions.achievementPathFor(
+                                org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 5)),
+                "Level 5 must still resolve to the old advancement");
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.ACH_TRANSCEND.equals(
+                        org.zifeng.ae2skills.SkillDefinitions.achievementPathFor(
+                                org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 6)),
+                "Level 6 must resolve to the new advancement");
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.achievementPathFor(
+                        org.zifeng.ae2skills.SkillDefinitions.DIVINE_MACHINE, 4) == null,
+                "Below the pinned threshold no advancement may be granted");
 
         // 全局发布语义（Ae2Effects 是进程级共享状态，因此串行放在主回归里验证，见 checkHostSkills）。
         // 这里只验证「没有活跃任务就绝不加速」这条边界：DivineGrace 的激活判定完全由自身负责。
@@ -559,12 +653,23 @@ public final class Ae2SkillGameTests {
         helper.assertTrue(!org.zifeng.ae2skills.divine.DivineGrace.isAccelerated(null),
                 "An idle divine grace must never mark any machine as accelerated");
 
+        // 6 级瞬成的记账入口在「没有任务、没有样板」时必须是纯空转：既不能抛，也不能留下
+        // 「已上锁」的残留——否则该 CPU 上此后所有样板都推不出去，整条产线静默停摆。
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.DIVINE_MAX_LEVEL == 6,
+                "The instant level must be level 6");
+        org.zifeng.ae2skills.divine.DivineTranscend.reset();
+        helper.assertTrue(!org.zifeng.ae2skills.divine.DivineTranscend.vetoPush(null),
+                "A null pattern must never be vetoed");
+        org.zifeng.ae2skills.divine.DivineTranscend.onPushed(null);
+        org.zifeng.ae2skills.divine.DivineTranscend.onInsert(null, null, appeng.api.config.Actionable.MODULATE);
+        org.zifeng.ae2skills.divine.DivineTranscend.reset();
+
         // 成就：JSON 必须真的被数据包加载，且存档级标记可持久化。
         var server = helper.getLevel().getServer();
         var holder = server.getAdvancements().get(org.zifeng.ae2skills.advancement.DivineAdvancements.ID);
         helper.assertTrue(holder != null, "The divine advancement must be loaded from the mod datapack");
         for (String path : new String[]{org.zifeng.ae2skills.SkillDefinitions.ACH_ASSEMBLER,
-                org.zifeng.ae2skills.SkillDefinitions.ACH_CPU}) {
+                org.zifeng.ae2skills.SkillDefinitions.ACH_CPU, org.zifeng.ae2skills.SkillDefinitions.ACH_TRANSCEND}) {
             helper.assertTrue(server.getAdvancements().get(org.zifeng.ae2skills.advancement.DivineAdvancements.id(path)) != null,
                     "Advancement " + path + " must be loaded from the mod datapack");
         }
@@ -575,7 +680,10 @@ public final class Ae2SkillGameTests {
                 "Both renamed skills must live in the divine tab");
         helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.cost(org.zifeng.ae2skills.SkillDefinitions.ASSEMBLER_INFINITE, 0) == 2000L,
                 "Moving a skill into the divine tab must not change its cost curve");
-        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.cost(org.zifeng.ae2skills.SkillDefinitions.CPU_INFINITE, 4) == 64000L,
+        // 「算力之神」5 级的费用 = 2000 << 4 = 32000（与上面 totals 里的 62000 自洽：
+        // 2000+4000+8000+16000+32000）。原先这里写的是 64000，那是 6 级的价格，
+        // 与本文件同一处的 totals 互相矛盾，属于从未被执行到位的错误断言。
+        helper.assertTrue(org.zifeng.ae2skills.SkillDefinitions.cost(org.zifeng.ae2skills.SkillDefinitions.CPU_INFINITE, 4) == 32000L,
                 "Moving a skill into the divine tab must not change its cost curve");
         var storage = server.overworld().getDataStorage();
         var state = storage.computeIfAbsent(new net.minecraft.world.level.saveddata.SavedData.Factory<>(

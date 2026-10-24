@@ -24,7 +24,12 @@ public final class ClientEffects {
     public static String value(String id, int level) {
         level = Math.clamp(level, 0, SkillDefinitions.maxLevel(id));
         if (level == 0) return Component.translatable("ui.zifeng_ae2_skills.disabled").getString();
-        if (id.equals(SkillDefinitions.DIVINE_MACHINE)) return "×" + SkillDefinitions.divineMultiplier(level);
+        if (id.equals(SkillDefinitions.DIVINE_MACHINE)) {
+            // 6 级不再是「更高倍率」，而是性质变化：验证一批成功即瞬成剩余批次。
+            if (level >= SkillDefinitions.DIVINE_MAX_LEVEL)
+                return Component.translatable("ui.zifeng_ae2_skills.instant").getString();
+            return "×" + SkillDefinitions.divineMultiplier(level);
+        }
         if (id.equals(SkillDefinitions.ASSEMBLER_SPEED) || id.equals(SkillDefinitions.CPU_SPEED)) return "×" + (level + 1);
         if (level == 5) return "∞";
         return Component.translatable(id.equals(SkillDefinitions.CPU_INFINITE)

@@ -18,7 +18,8 @@
     "ae2.AeCraftingServiceMixin",
     "ae2.AeCpuBlockMixin",
     "ae2.UnlimitedCpuMixin",
-    "ae2.PatternProviderPushMixin"
+    "ae2.PatternProviderPushMixin",
+    "ae2.DivineCpuMixin"
   ],
   "client": ["host.SkillTreeScreenMixin", "host.SkillTreeCategoryMixin", "ae2.CpuMenuMixin", "ae2.CraftConfirmMixin"],
   "injectors": {"defaultRequire": 1}

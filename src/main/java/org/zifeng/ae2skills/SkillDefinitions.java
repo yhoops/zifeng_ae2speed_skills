@@ -23,10 +23,19 @@ public final class SkillDefinitions {
     /** 页签强调色（ARGB，与宿主 CATEGORY_COLORS 同格式）。 */
     public static final int DIVINE_CATEGORY_COLOR = 0xFFB388FF;
 
-    /** 五级倍率：索引即等级。1→×2 / 2→×8 / 3→×16 / 4→×128 / 5→×1024。 */
-    private static final int[] DIVINE_MULTIPLIERS = {1, 2, 8, 16, 128, 1024};
-    /** 非等比费用，不能套用 base<<n。 */
-    private static final long[] DIVINE_COSTS = {1000L, 5000L, 10000L, 50000L, 100000L};
+    /**
+     * 「万机之神的加护」的等级上限。
+     * <p>第 6 级不再是倍率：它的效果是「验证 1 批 → 瞬成整单」，见 {@code DivineTranscend}。
+     */
+    public static final int DIVINE_MAX_LEVEL = 6;
+    /**
+     * 六级倍率表：索引即等级。1→×2 … 5→×1024。
+     * <p>索引 6 刻意仍填 1024：第 6 级没有更高倍率，填 1024 只是让所有
+     * 「按等级取倍率」的既有代码（加速、排序、clamp）拿到一个不越界且不虚高的值。
+     */
+    private static final int[] DIVINE_MULTIPLIERS = {1, 2, 8, 16, 128, 1024, 1024};
+    /** 非等比费用，不能套用 base<<n。第 6 级由用户指定为 1,000,000 点。 */
+    private static final long[] DIVINE_COSTS = {1000L, 5000L, 10000L, 50000L, 100000L, 1000000L};
 
     private SkillDefinitions() {}
 
@@ -53,6 +62,15 @@ public final class SkillDefinitions {
     public static final String ACH_MACHINE = "divine_machine_grace";
     public static final String ACH_ASSEMBLER = "divine_assembler_grace";
     public static final String ACH_CPU = "divine_cpu_grace";
+    /** 第 6 级专属成就。 */
+    public static final String ACH_TRANSCEND = "divine_transcendence";
+    /**
+     * 万机之神的「旧」满级成就门槛：<b>必须钉成常量 5</b>。
+     * <p>它原本由 {@code maxLevel(id)} 推导。一旦 {@link #DIVINE_MAX_LEVEL} 变成 6，
+     * 沿用 maxLevel 会让 5 级成就偷偷改成「6 级才发」，已有存档再也拿不到它。
+     * 门槛从此固定为 5，6 级另发 {@link #ACH_TRANSCEND}。
+     */
+    public static final int ACH_MACHINE_LEVEL = 5;
     /** 该技能满级时对应的成就后缀；没有成就的技能返回 {@code null}。 */
     public static String achievementPath(String id) {
         return switch (id) {
@@ -62,7 +80,23 @@ public final class SkillDefinitions {
             default -> null;
         };
     }
-    public static int maxLevel(String id) { return id.equals(ASSEMBLER_SPEED) || id.equals(CPU_SPEED) ? 4 : 5; }
+    /**
+     * 按「技能 + 当前等级」求应发放的成就后缀：没到门槛返回 {@code null}。
+     * <p>万机之神有两级门槛（5 / 6），其余技能仍只有一个满级成就。
+     */
+    public static String achievementPathFor(String id, int level) {
+        if (DIVINE_MACHINE.equals(id)) {
+            if (level >= DIVINE_MAX_LEVEL) return ACH_TRANSCEND;
+            return level >= ACH_MACHINE_LEVEL ? ACH_MACHINE : null;
+        }
+        String path = achievementPath(id);
+        return path != null && level >= maxLevel(id) ? path : null;
+    }
+    public static int maxLevel(String id) {
+        if (id.equals(ASSEMBLER_SPEED) || id.equals(CPU_SPEED)) return 4;
+        // 「合成之神 / 算力之神」保持 5 级；只有万机之神有第 6 级。
+        return DIVINE_MACHINE.equals(id) ? DIVINE_MAX_LEVEL : 5;
+    }
     public static int divineMultiplier(int level) { return DIVINE_MULTIPLIERS[Math.clamp(level, 0, DIVINE_MULTIPLIERS.length - 1)]; }
     public static long cost(String id, int current) {
         if (isDivine(id)) return DIVINE_COSTS[Math.clamp(current, 0, DIVINE_COSTS.length - 1)];
