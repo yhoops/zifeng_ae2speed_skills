@@ -4,7 +4,7 @@ plugins {
 }
 version = mod_version
 group = 'org.zifeng.ae2skills'
-base.archivesName = 'zifeng_ae2_skills'
+base.archivesName = 'zifeng_ae2speed_skills-1.21.1neoforge'
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 repositories {
     maven { url = 'https://api.modrinth.com/maven' }

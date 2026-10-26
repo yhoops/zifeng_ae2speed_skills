@@ -7,7 +7,7 @@ plugins {
 
 version = mod_version
 group = 'org.zifeng.ae2skills'
-base.archivesName = 'zifeng_ae2_skills_forge_1_20_1'
+base.archivesName = 'zifeng_ae2speed_skills-1.20.1forge'
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
