@@ -1,0 +1,10 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "org.zifeng.ae2skills.mixin",
+  "plugin": "org.zifeng.ae2skills.compat.AePowerMixinPlugin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": ["converter.ConverterBlockEntityMixin"],
+  "client": ["host.ConverterScreenMixin"],
+  "injectors": {"defaultRequire": 1}
+}

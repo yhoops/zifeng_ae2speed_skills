@@ -1,0 +1,52 @@
+# License: CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike 4.0 International).
+# Free to study, modify and redistribute for non-commercial use with credit to the
+# original author 子枫 (zifeng); derivatives must keep this license. See LICENSE.
+# Full text: https://creativecommons.org/licenses/by-nc-sa/4.0/
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "CC-BY-NC-SA-4.0"
+issueTrackerURL = "https://github.com/yhoops/zifeng_ae2speed_skills/issues"
+
+[[mods]]
+modId = "zifeng_ae2_skills"
+version = "${version}"
+displayName = "Zifeng AE2 Skills"
+logoFile = "logo.png"
+displayURL = "https://github.com/yhoops/zifeng_ae2speed_skills"
+authors = "子枫 (zifeng), contributors"
+description = '''Five AE2 skills for the original Zifeng Skill Tree (Forge 1.20.1 build): assembler overclock, CPU overclock, instant crafting, independent split CPUs, and Divine Grace of the Myriad-Machine God. Also powers the skill point converter from an adjacent ME network to generate skill points using AE energy.'''
+
+[[dependencies.zifeng_ae2_skills]]
+    modId = "forge"
+    mandatory = true
+    versionRange = "[47,)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.zifeng_ae2_skills]]
+    modId = "minecraft"
+    mandatory = true
+    versionRange = "[1.20.1,1.20.2)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.zifeng_ae2_skills]]
+    modId = "zifeng_s_custom_skill_tree"
+    mandatory = true
+    versionRange = "[0,)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+[[dependencies.zifeng_ae2_skills]]
+    modId = "ae2"
+    mandatory = true
+    versionRange = "[15.0.0,)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+[[dependencies.zifeng_ae2_skills]]
+    modId = "jade"
+    mandatory = false
+    versionRange = "[11.0.0,)"
+    ordering = "AFTER"
+    side = "BOTH"

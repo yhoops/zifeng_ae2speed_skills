@@ -19,3 +19,22 @@ __pycache__/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# ---- 本地开发/调研产物，不入库 ----
+# 逆向与签名比对的临时工作区（数百 MB），仅本机使用
+.probe/
+.probe_tmp/
+# 代码索引缓存
+.codegraph/
+# 改动前的文件备份
+backups/
+# 历史构建产物（正式发布走 GitHub Releases）
+dist/
+# 交接/工作笔记
+HANDOFF.md
+# 一次性调研脚本与抓取的 API 响应
+scr_an.py
+cfw.json
+g.json
+j.json
+forge.json

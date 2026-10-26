@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "org.zifeng.ae2skills.mixin",
+  "plugin": "org.zifeng.ae2skills.compat.OptionalCompatibilityPlugin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "compat.AdvancedAeCpuSkillsMixin",
+    "compat.ExtendedAssemblerSpeedMixin",
+    "compat.ExtendedMatrixCrafterMixin",
+    "compat.UfoCpuPoolSkillsMixin"
+  ],
+  "injectors": {"defaultRequire": 1}
+}

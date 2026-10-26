@@ -1,0 +1,207 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+}
+
+version = mod_version
+group = 'org.zifeng.ae2skills'
+base.archivesName = 'zifeng_ae2_skills_forge_1_20_1'
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+    // 1.20.1 Forge 不支持 neoforge.mods.toml 里的 [[mixins]] 块，靠 manifest 声明
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', ''
+            property 'forge.logging.console.level', 'info'
+            mods { zifeng_ae2_skills { source sourceSets.main } }
+        }
+        server {
+            workingDirectory project.file('run/server')
+            property 'forge.logging.console.level', 'info'
+            // 1.20.1 起服务端需要显式接受 EULA 与关闭 GUI
+            arg '-nogui'
+            mods { zifeng_ae2_skills { source sourceSets.main } }
+        }
+        data {
+            workingDirectory project.file('run/data')
+            args '--mod', 'zifeng_ae2_skills', '--all',
+                    '--output', file('src/generated/resources/'),
+                    '--existing', file('src/main/resources/')
+            mods { zifeng_ae2_skills { source sourceSets.main } }
+        }
+    }
+}
+
+repositories {
+    // Modrinth 的 Maven 在本机网络上不稳定（SSL socket 不可达），
+    // 因此 AE2 / GuideME / Jade / 宿主一律用 reference/ 下的 jar；
+    // 缺失时由下面的 prepareDependencies 从各自官方 CDN 下载并按 SHA-256 校验。
+    mavenLocal()
+    maven { url = 'https://repo1.maven.org/maven2' }
+}
+
+// ---------------------------------------------------------------------------
+// 依赖 jar 获取：reference/ 不入库（体积大且非本仓库代码），
+// 但克隆仓库后必须能一条命令拿到完全相同的二进制，否则编译期就失败。
+// 这里逐个下载并按 SHA-256 校验；校验不过直接让构建失败，绝不用错版本的 jar 去编译。
+// ---------------------------------------------------------------------------
+def referenceDir = layout.projectDirectory.dir('../reference').asFile
+def requiredJars = [
+    'host-1.20.1-1.5.5.jar': [
+        url : 'https://edge.forgecdn.net/files/9275/476/zifeng_s_custom_skill_tree-1.20.1-Forge-1.5.5.jar',
+        sha : '5efeb3328a35699a20263dc2676e3665a96d15752974dedca78e36f3b6563afd'
+    ],
+    'ae2-15.4.11.jar': [
+        url : 'https://cdn.modrinth.com/data/XxWD5pD3/versions/jYgSnxye/appliedenergistics2-forge-15.4.11.jar',
+        sha : 'f2ff9ee5122b037d4e93537425ab9fbe49860fc9c3977db13b20a50ca7d30f9e'
+    ],
+    'guideme-20.1.7.jar': [
+        url : 'https://cdn.modrinth.com/data/Ck4E7v7R/versions/UD2nQxJx/guideme-20.1.7.jar',
+        sha : 'f01612808bbd8ea469de26c1970fe6dfb71f4a1fb78311155342fd048a137e95'
+    ],
+    'jade-11.13.3.jar': [
+        url : 'https://cdn.modrinth.com/data/nvQzSEkH/versions/xJQHCmWJ/Jade-1.20.1-Forge-11.13.3.jar',
+        sha : 'a632c77975e5aedff6322b0072f8b0db3f5d4bf914df6bdcc87d1aea4d5f55f4'
+    ]
+]
+tasks.register('prepareDependencies') {
+    outputs.files(requiredJars.keySet().collect { new File(referenceDir, it) })
+    doLast {
+        requiredJars.each { name, spec ->
+            def target = new File(referenceDir, name)
+            if (target.isFile()) {
+                def actual = java.security.MessageDigest.getInstance('SHA-256').digest(target.bytes).encodeHex().toString()
+                if (actual != spec.sha) {
+                    throw new GradleException("reference/${name} 校验和不匹配（期望 ${spec.sha}，实际 ${actual}）。" +
+                            "请删除该文件后重跑，或用 -PskipDependencyDownload 配合自备的 jar。")
+                }
+                return
+            }
+            if (project.hasProperty('skipDependencyDownload')) return
+            logger.lifecycle("下载 ${name} ...")
+            target.parentFile.mkdirs()
+            try {
+                new URL(spec.url).withInputStream { input -> target.withOutputStream { out -> out << input } }
+            } catch (Exception error) {
+                target.delete()
+                throw new GradleException("下载 ${name} 失败：${error.message}。" +
+                        "若网络受限，可手动下载 ${spec.url} 放到 reference/${name}。", error)
+            }
+            def actual = java.security.MessageDigest.getInstance('SHA-256').digest(target.bytes).encodeHex().toString()
+            if (actual != spec.sha) {
+                throw new GradleException("下载的 ${name} 校验和不匹配（期望 ${spec.sha}，实际 ${actual}）。")
+            }
+        }
+    }
+}
+def referenceJar = { String name ->
+    files(new File(referenceDir, name)).builtBy(tasks.named('prepareDependencies'))
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // ---- 宿主「子枫技能树」1.20.1 Forge：编译期 + 运行期都用校验过的 jar ----
+    compileOnly referenceJar('host-1.20.1-1.5.5.jar')
+    runtimeOnly referenceJar('host-1.20.1-1.5.5.jar')
+
+    // ---- AE2 1.20.1 Forge ----
+    compileOnly referenceJar('ae2-15.4.11.jar')
+    runtimeOnly referenceJar('ae2-15.4.11.jar')
+    // AE2 硬性要求 GuideME [20.1.7,20.2.0)，运行期必须存在
+    runtimeOnly referenceJar('guideme-20.1.7.jar')
+
+    // ---- Jade（可选，compileOnly）----
+    compileOnly referenceJar('jade-11.13.3.jar')
+
+    // ---- MixinExtras：Forge 47 只带 Mixin 0.8.5，不带 MixinExtras ----
+    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.4.1"))
+    implementation(jarJar("io.github.llamalad7:mixinextras-forge:0.4.1")) {
+        jarJar.ranged(it, "[0.4.1,)")
+    }
+}
+
+// 1.20.1 Forge 的 mixin 配置通过 manifest 声明（mods.toml 不支持 [[mixins]]）
+tasks.named('jar', Jar) {
+    manifest {
+        attributes([
+            'Specification-Title'     : 'zifeng_ae2_skills',
+            'Specification-Vendor'    : 'zifeng',
+            'Specification-Version'   : '1',
+            'Implementation-Title'    : project.name,
+            'Implementation-Version'  : project.jar.archiveVersion,
+            'Implementation-Vendor'   : 'zifeng',
+            'MixinConfigs'            : 'zifeng_ae2_skills.mixins.json,zifeng_ae2_skills.compat.mixins.json,zifeng_ae2_skills.converter.mixins.json'
+        ])
+    }
+    // LICENSE 在仓库根目录，本工程是独立构建（settings.gradle 各自一份），取不到根工程路径
+    from(file('../LICENSE')) { into '/' }
+    exclude 'org/zifeng/ae2skills/test/**'
+}
+
+// ---------------------------------------------------------------------------
+// 分发包只有一个：把带 MixinExtras 的那个 jar 作为正式产物，另一个降级为 -slim。
+//
+// 背景：ae2.CpuMenuMixin 用了 MixinExtras 的 @WrapOperation，而 Forge 47 只带 Mixin 0.8.5，
+// 不含 MixinExtras；主 mixin 配置是 required:true + defaultRequire:1，失败会直接让客户端崩溃。
+// 默认产物若是不含 MixinExtras 的瘦 jar，玩家下载后一打开 AE2 合成界面就崩。
+// 因此让 jarJar 的产物占用默认文件名（分发用），瘦 jar 加 -slim 后缀（仅本地调试）。
+// ---------------------------------------------------------------------------
+tasks.named('jarJar') { archiveClassifier = '' }
+tasks.named('jar') { archiveClassifier = 'slim' }
+
+// jarJar 是独立任务，不继承 jar 里的 LICENSE，必须单独挂一次，
+// 否则玩家拿到的正式分发包里没有许可证全文。
+tasks.named('jarJar') {
+    from(file('../LICENSE')) { into '/' }
+}
+
+// ---- 契约清单：Compatibility 预检靠它遍历要校验的类 ----
+// 不生成的话 Compatibility.resource() 会抛 IOException，PROBLEMS 非空 =>
+// enabled()=false => 所有 mixin 的 shouldApplyMixin 返回 false，整个附属静默失效。
+def contractDir = layout.buildDirectory.dir('generated/contractResources')
+tasks.register('generateContractIndex') {
+    dependsOn 'compileJava'
+    inputs.files(sourceSets.main.output.classesDirs)
+    outputs.dir(contractDir)
+    doLast {
+        def names = []
+        sourceSets.main.output.classesDirs.each { root ->
+            fileTree(root).matching { include '**/*.class'; exclude '**/test/**' }.each { entry ->
+                names.add(root.toPath().relativize(entry.toPath()).toString().replace('\\', '/').replace('.class', ''))
+            }
+        }
+        def output = contractDir.get().file('zifeng-ae2-contract-classes.txt').asFile
+        output.parentFile.mkdirs()
+        output.text = names.sort().join('\n') + '\n'
+    }
+}
+sourceSets.main.resources.srcDir(contractDir)
+
+tasks.named('processResources', ProcessResources) {
+    // 必须显式依赖：仅把 contractDir 加进 resources.srcDir 不会触发生成任务，
+    // 结果是 jar 里没有清单、Compatibility 预检失败、全部 mixin 静默不应用。
+    dependsOn 'generateContractIndex'
+    var replaceProperties = [
+        version: mod_version,
+        minecraft_version_range: '[1.20.1,1.20.2)',
+        forge_version_range: '[47,48)',
+        ae2_version_range: '[15.0.0,)',
+        host_version_range: '[0,)'
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/mods.toml']) {
+        expand replaceProperties
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+}
