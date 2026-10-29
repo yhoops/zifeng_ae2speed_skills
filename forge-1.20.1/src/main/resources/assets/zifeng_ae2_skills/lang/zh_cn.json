@@ -22,6 +22,8 @@
   "ui.zifeng_ae2_skills.ae_not_connected": "⚠ 未连接到 ME 网络（相邻 6 面需紧贴 AE 线缆或设备）",
   "ui.zifeng_ae2_skills.server_effect": "服务器当前：%s",
   "ui.zifeng_ae2_skills.cpu_storage_format_fallback": "（容量显示异常，已使用备用格式；合成功能不受影响。反馈时请附上 logs/latest.log）",
+  "ui.zifeng_ae2_skills.degraded_header": "【子枫 AE2 技能】本附属功能已停用：技能不会生效，但游戏可以正常游玩。原因：",
+  "ui.zifeng_ae2_skills.degraded_log": "完整报错在：%s（反馈时请直接附上这个文件）",
   "advancement.zifeng_ae2_skills.divine_machine_grace.title": "万机之神的加护",
   "advancement.zifeng_ae2_skills.divine_machine_grace.description": "首次将「万机之神的加护」激活到 5 级：整条 AE 产线在你的号令下以千倍速率运转。",
   "advancement.zifeng_ae2_skills.divine_assembler_grace.title": "合成之神的加护",

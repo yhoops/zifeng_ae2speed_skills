@@ -19,7 +19,33 @@ public final class VirtualCpus {
     private static final String BYTES = "zifeng_reserved_bytes";
     private VirtualCpus() {}
 
-    public static VirtualCpuState state(CraftingCPUCluster cpu) { return ((CpuExtension) (Object) cpu).zifeng$state(); }
+    /**
+     * 未被混入接管的集群占位状态：既不参与虚拟 CPU 拆分，也不接受任务。
+     * <p>只在「{@code AeCpuClusterMixin} 没挂上」时使用——那种情况已经被
+     * {@code Compatibility.degraded()} 标记并停用全部技能，这里只保证旧路径不会因为
+     * 一次强制转换把服务器 tick 打断。
+     */
+    private static final VirtualCpuState INERT = new VirtualCpuState();
+
+    /** 读到扩展接口则返回它，否则返回 null（半应用状态下的唯一安全入口）。 */
+    private static CpuExtension ext(Object cpu) {
+        return cpu instanceof CpuExtension extension ? extension : null;
+    }
+
+    public static VirtualCpuState state(CraftingCPUCluster cpu) {
+        var extension = ext(cpu);
+        return extension == null ? INERT : extension.zifeng$state();
+    }
+
+    /**
+     * 可写的状态；集群没被接管时返回 null，调用方据此跳过写入。
+     * <p>{@link #state} 在半应用状态下返回共享的 {@link #INERT} 占位：
+     * 只读没问题，往里写就会把「某一台 CPU 的状态」泄漏到所有 CPU 上。
+     */
+    public static VirtualCpuState mutableState(CraftingCPUCluster cpu) {
+        var extension = ext(cpu);
+        return extension == null ? null : extension.zifeng$state();
+    }
 
     /**
      * 算力超频／分裂算力对「并行处理单元数量」的唯一放大入口。
@@ -47,15 +73,15 @@ public final class VirtualCpus {
         var root = root(cpu);
         var data = state(cpu);
         if (data.retired || (data.slot >= Ae2Effects.getCpuSlotLimit() && !occupied(cpu))) return 0;
-        long total = scaleStorage(((CpuExtension) (Object) root).zifeng$baseStorage());
+        long total = scaleStorage(ext(root) == null ? 0L : ext(root).zifeng$baseStorage());
         if (total == Long.MAX_VALUE) return Long.MAX_VALUE;
         long remaining = Math.max(0, total - reserved(root));
         for (var child : state(root).children) remaining = Math.max(0, remaining - reserved(child));
         return remaining;
     }
     public static int coProcessors(CraftingCPUCluster cpu) {
-        int base = ((CpuExtension) (Object) root(cpu)).zifeng$baseCoProcessors();
-        return scaleCoProcessors(base);
+        var extension = ext(root(cpu));
+        return extension == null ? 0 : scaleCoProcessors(extension.zifeng$baseCoProcessors());
     }
     public static boolean canSubmit(CraftingCPUCluster cpu, IGrid grid) {
         var physical = root(cpu);
@@ -70,6 +96,9 @@ public final class VirtualCpus {
 
     /** Called outside the native set iteration, never while a job is returning items. */
     public static void refresh(Set<CraftingCPUCluster> cpus, CraftingService service) {
+        // 有任何一个集群没被接管就整体不动：拆分出的虚拟 CPU 依赖同一个状态对象，
+        // 混着来会让「兄弟 CPU」的父子关系指向占位状态，反而更难恢复。
+        for (var cpu : cpus) if (ext(cpu) == null) return;
         int limit = Ae2Effects.getCpuSlotLimit();
         var physical = new ArrayList<CraftingCPUCluster>();
         for (var cpu : cpus) if (!state(cpu).externallyManaged && state(cpu).parent == null && !cpu.isDestroyed()) physical.add(cpu);

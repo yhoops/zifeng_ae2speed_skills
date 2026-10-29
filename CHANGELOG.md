@@ -4,6 +4,30 @@
 
 ---
 
+## 1.2.1（仅 Forge 1.20.1 构建线）
+
+修复 [issue #1](https://github.com/yhoops/zifeng_ae2speed_skills/issues/1)：与以高优先级 `@Overwrite` 覆盖 AE2 合成服务方法的模组（实测为 crazyae2addons 2.6.2）同装时，游戏在启动阶段直接崩溃。1.21.1 主线不受该问题影响，版本号仍为 1.2.0。
+
+### 修复：与 crazyae2addons 等模组的启动崩溃
+
+- 崩溃原文：`InvalidInjectionException: @At("INVOKE") on CraftingService::zifeng$ownFinalOutput with priority 1000 cannot inject into CraftingService::insertIntoCpus ... merged by net.oktawia.crazyae2addons.mixins.AAECraftingServiceMixin with priority 1200`。crazyae2addons 用 `@Overwrite` 重写了整个 `insertIntoCpus`，本模组对该方法体内的调用点做 `@Redirect`，而 Mixin 不允许低优先级向已合并的方法注入。
+- 根因修复：这条「兄弟 CPU 不重复结清最终产物」的去重从**调用方**的 `@Redirect` 改挂到**被调方** `CraftingCpuLogic.insert` 的 `@Inject(HEAD, cancellable)`（新文件 `mixin/ae2/AeCpuInsertMixin`）。第三方无论怎么覆盖调用方，最终仍要调用被调方，注入点因此免疫；判据与原实现完全一致，不影响其它逻辑。取舍见 [docs/adr/0003-insert-dedup-on-callee.md](docs/adr/0003-insert-dedup-on-callee.md)。
+
+### 新增：注入失败不再阻止启动，改为游戏内提示
+
+- 主配置的注入失败从「中止启动」降级为「停用受影响功能并继续」。原来 `required:true` 会把一次注入冲突升级成 FATAL。**代价是可能出现半应用状态**，因此配套做了下面三层防护。
+- 玩家登录时会在聊天框收到三行提示：说明技能已停用、逐条列出失败原因（含冲突目标类名）、以及 `logs/latest.log` 的完整路径；同时服务端日志留一条 WARN。每个玩家每次进服只提示一次。
+- 半应用防护：`FMLCommonSetupEvent` 阶段用 `isAssignableFrom` 逐个确认 5 个跨 mixin 契约接口真的挂到了目标类上，缺任何一个即整体降级——技能等级全部发布为 0，所有功能入口在触到强制转换之前就返回。同时把代码里全部 13 处跨 mixin 强制转换改为 `instanceof` 检测作为冗余保险，`NetworkHandler` 在通道未注册时短路发送，避免 tick 被打断。
+- 降级时的处理方式是**全部停用**而不是「只停出问题的那一个技能」：五个技能共享同一套契约并读写同一份 NBT，只停一个会让存档结构分叉。
+
+### 验证状态
+
+- 通过 JDK 17 全量构建（`./gradlew build`），产物 `zifeng_ae2speed_skills-1.20.1forge-1.2.1.jar`；产物内容已校验：三个混入配置引用的 class 全部存在、`AeCpuInsertMixin` 已注册、无残留的旧注入。
+- 冲突源 crazyae2addons 2.6.2 的 `@Overwrite` 方法体经 `javap` 逐条确认仍以虚调用走到 `CraftingCpuLogic.insert`，故新注入点必然命中。
+- **仍未在真实存档上跑过完整回归**，首次使用请先备份存档。
+
+---
+
 ## 1.2.0
 
 首个同时提供 NeoForge 1.21.1 与 Forge 1.20.1 两条构建线的版本，并接上「万机之神的加护」6 级的瞬成效果。
@@ -42,6 +66,7 @@
 - 新增 `divine/DivineTranscend`（取证与结算状态机）、`mixin/ae2/DivineCpuMixin`（观察 `executeCrafting` / `insert` / `tickCraftingLogic`）、`crafting/CraftingDelivery`（从 `InstantCrafting` 抽出的三级兜底投递，两处共用）。
 - `PatternProviderPushMixin` 增加 `pushPattern` HEAD 的取消点，用于验证期间上锁。
 - 三个不可逆决定的来由记在 [docs/adr/0001-divine-grace-level-6.md](docs/adr/0001-divine-grace-level-6.md)。
+- 「神明之力」页签如何跟随宿主页签数动态定位（1.20.1 版改用运行时反射，不再匹配写死的字面量）记在 [docs/adr/0002-divine-tab-dynamic-index.md](docs/adr/0002-divine-tab-dynamic-index.md)。
 - 「算力之神」5 级分裂算力会绕过 AE2 原生的 `executeCrafting`（改由 `UnlimitedDispatch` 直连 `pushPattern`），因此 6 级的取证标记在那条路径上也补了一份——否则同时点满分裂算力的玩家会看到 6 级完全不生效。
 
 ### 修复：兼容预检不再误杀可选注入

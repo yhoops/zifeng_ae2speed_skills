@@ -63,6 +63,8 @@ public final class EffectEvents {
         if (event.getEntity() instanceof ServerPlayer player) {
             update(player);
             NetworkHandler.sendToPlayer(player, StatePayload.current());
+            // 降级/预检失败时把原因和日志路径直接贴进聊天框：玩家不必先猜到要去翻日志。
+            org.zifeng.ae2skills.compat.DegradedNotice.announce(player);
         }
     }
 
@@ -83,6 +85,7 @@ public final class EffectEvents {
     public static void stop(ServerStoppedEvent event) {
         Ae2Effects.clear();
         TickBudget.reset();
+        org.zifeng.ae2skills.compat.DegradedNotice.reset();
         // 换存档/重进服务器时必须重新允许发放（判定依据在存档里，这里只清会话缓存）。
         DivineAdvancements.resetCache();
     }

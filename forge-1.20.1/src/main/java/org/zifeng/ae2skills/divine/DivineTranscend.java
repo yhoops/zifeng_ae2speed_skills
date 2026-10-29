@@ -151,15 +151,50 @@ public final class DivineTranscend {
      * 无人类领取、产物直接进 ME 存储的订单恒返回 0，而 waitingFor 其实已经被扣掉了。
      */
     public static void beginInsert(CraftingCpuLogic logic, AEKey key) {
+        // 这一次 insert 会被 AeCpuInsertMixin 在 HEAD 直接取消（兄弟 CPU 不重复结清最终产物），
+        // 而取消后 RETURN 注入不会执行，压进去的帧必然没人来弹。所以这里干脆不压：
+        // 两条 HEAD 注入的先后顺序由 Mixin 内部排序决定，从源头判断才不依赖顺序。
+        if (key != null && CraftingDelivery.isDeliveringFinalOutput()
+                && key.matches(logic.getFinalJobOutput())) return;
         INSERT_STACK.get().push(new Object[]{logic, key, logic.getWaitingFor(key)});
+    }
+
+    /**
+     * 丢弃一条没能配对的 {@code insert} 取证帧。
+     * <p>正常配对由 {@code insert} 的 {@code RETURN} 注入完成（见 {@code DivineCpuMixin}）。
+     * 但 1.2.1 起 {@code AeCpuInsertMixin} 在 {@code insert} 的 {@code HEAD} 就可能
+     * {@code setReturnValue(0)} 取消调用——取消后 {@code RETURN} 注入不执行，压入的帧会残留，
+     * 下一次取证就会读到上一轮的 waitingFor，把「没被接纳」误判成「被接纳」。
+     * <p>两条 {@code HEAD} 注入的先后顺序由 Mixin 内部排序决定，无法从源码保证，
+     * 因此这里按「栈顶是否就是这一对 (logic, key)」来判断，顺序无关且重复调用安全。
+     */
+    public static void discardPendingInsert(CraftingCpuLogic logic, AEKey key) {
+        ArrayDeque<Object[]> stack = INSERT_STACK.get();
+        if (stack.isEmpty()) return;
+        // 压栈侧已按同一条判据跳过（见 beginInsert），这里只是兜底：
+        // 万一仍有历史遗留帧，顺手清掉，避免长会话里慢慢堆积。
+        while (!stack.isEmpty()) {
+            Object[] top = stack.peek();
+            if (same(top, logic, key)) stack.pop();
+            else break;
+        }
+    }
+
+    /** 帧的 (CPU, 键) 是否就是这一对。键用 equals：同一物品可能是不同实例。 */
+    private static boolean same(Object[] frame, CraftingCpuLogic logic, AEKey key) {
+        if (frame[0] != logic) return false;
+        return frame[1] == key || (frame[1] != null && frame[1].equals(key));
     }
 
     /** 本次 {@code insert} 调用里，合成任务真的从 waitingFor 里扣掉了多少。 */
     private static long acceptedByJob(CraftingCpuLogic logic, AEKey key) {
         ArrayDeque<Object[]> stack = INSERT_STACK.get();
         if (stack.isEmpty()) return 0;
-        Object[] frame = stack.pop();
-        if (frame[0] != logic || frame[1] != key) return 0;
+        // 只看栈顶、不匹配就原样保留：错位的帧被静默丢弃会让后续取证把上一轮的
+        // waitingFor 当成基线，把一个没被机器验证过的样板判成「已验过」。
+        Object[] frame = stack.peek();
+        if (frame == null || !same(frame, logic, key)) return 0;
+        stack.pop();
         return Math.max(0L, (long) frame[2] - logic.getWaitingFor(key));
     }
 
@@ -172,7 +207,8 @@ public final class DivineTranscend {
         if (pattern instanceof IMolecularAssemblerSupportedPattern) return;
         Ledger ledger = LEDGERS.get(logic);
         if (ledger == null) {
-            Object job = ((CpuLogicAccess) logic).zifeng$getJob();
+            if (!(logic instanceof CpuLogicAccess access)) return;
+            Object job = access.zifeng$getJob();
             if (job == null) return;
             ledger = new Ledger();
             ledger.job = job;
@@ -221,7 +257,8 @@ public final class DivineTranscend {
             if (!LEDGERS.isEmpty()) LEDGERS.remove(logic);
             return;
         }
-        CpuLogicAccess access = (CpuLogicAccess) logic;
+        // 访问器混入没挂上（半应用）时直接退出：功能已经整体停用，这里只保证不抛异常。
+        if (!(logic instanceof CpuLogicAccess access)) return;
         Object job = access.zifeng$getJob();
         Ledger ledger = LEDGERS.get(logic);
         if (job == null) {
@@ -240,14 +277,16 @@ public final class DivineTranscend {
         }
         if (ledger.entries.isEmpty()) return;
         // 1.20.1：CraftingCpuLogic 无 isJobSuspended()（暂停任务是 1.21 新增），此处只剩 isActive 判定
-        if (!access.zifeng$getCluster().isActive()) return;
+        var cluster = access.zifeng$getCluster();
+        if (cluster == null || !cluster.isActive()) return;
         long now = currentTick(logic);
         // 同一 tick 的重复入口（原生 tick 可能被多个入口驱动）只结算一次。
         if (now != Long.MIN_VALUE && ledger.lastTick == now) return;
         ledger.lastTick = now;
 
+        // 任务访问器同样可能没挂上；取不到就当作「这一 tick 没有可结算的东西」。
+        if (!(job instanceof JobAccess jobAccess)) return;
         NativeCpuExecution exec = new NativeCpuExecution(logic);
-        JobAccess jobAccess = (JobAccess) job;
         Map<IPatternDetails, Object> tasks = jobAccess.zifeng$getTasks();
         long began = System.nanoTime();
         long deadline = TickBudget.deadline(began, SETTLE_ALLOWANCE_NANOS);
@@ -371,7 +410,8 @@ public final class DivineTranscend {
     }
 
     private static long currentTick(CraftingCpuLogic logic) {
-        Level level = ((CpuLogicAccess) logic).zifeng$getCluster().getLevel();
+        var cluster = logic instanceof CpuLogicAccess access ? access.zifeng$getCluster() : null;
+        Level level = cluster == null ? null : cluster.getLevel();
         return level instanceof ServerLevel server ? server.getServer().getTickCount() : Long.MIN_VALUE;
     }
 }

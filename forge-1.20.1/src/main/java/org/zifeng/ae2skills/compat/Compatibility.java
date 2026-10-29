@@ -7,8 +7,17 @@ import java.util.*;
 import com.google.gson.JsonParser;
 // 1.20.1：net.neoforged.fml.ModLoadingException / ModLoadingIssue 都不存在；
 // 这两处能力已由 report() 的「只记日志、不抛异常」替代，因此不再需要对应 import。
+import appeng.crafting.execution.CraftingCpuLogic;
+import appeng.crafting.execution.ElapsedTimeTracker;
+import appeng.crafting.execution.ExecutingCraftingJob;
+import appeng.me.cluster.implementations.CraftingCPUCluster;
 import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraftforge.fml.loading.LoadingModList;
+import org.zifeng.ae2skills.crafting.CpuExtension;
+import org.zifeng.ae2skills.crafting.InstantCpuExtension;
+import org.zifeng.ae2skills.crafting.JobAccess;
+import org.zifeng.ae2skills.crafting.TimeAccess;
+import org.zifeng.ae2skills.mixin.ae2.CpuLogicAccess;
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
 import org.slf4j.LoggerFactory;
@@ -22,8 +31,19 @@ public final class Compatibility {
     private static final Set<String> PROBLEMS = new LinkedHashSet<>();
     private static boolean checked;
     private static String versions = "";
+    /** 0 = 还没检查，1 = 可用，2 = 不可用。让 {@link #enabled()} 在热路径上无锁。 */
+    private static volatile int state;
     private Compatibility() {}
-    public static boolean enabled() { check(); return PROBLEMS.isEmpty(); }
+    /**
+     * 本附属是否可用。
+     * <p>技能等级在每个玩家每 tick 都会被重新计算，这条路径不能每次都进同步块，
+     * 因此检查结果缓存在 {@link #state} 里，只有第一次调用会真正跑预检。
+     */
+    public static boolean enabled() {
+        int current = state;
+        if (current == 0) { check(); current = state; }
+        return current == 1;
+    }
     public static synchronized void check() {
         if (checked) return;
         checked = true;
@@ -62,6 +82,7 @@ public final class Compatibility {
             PROBLEMS.add("无法完成兼容检查 / Compatibility preflight failed: " + e);
         } finally {
             CLASSES.clear();
+            state = PROBLEMS.isEmpty() ? 1 : 2;
             if (!PROBLEMS.isEmpty()) LoggerFactory.getLogger("zifeng_ae2_skills").error(diagnostic());
         }
     }
@@ -90,6 +111,72 @@ public final class Compatibility {
         if (PROBLEMS.isEmpty()) return true;
         LoggerFactory.getLogger("zifeng_ae2_skills").error(diagnostic());
         return false;
+    }
+
+    // ------------------------------------------------------------------ 半应用降级
+    //
+    // 1.2.1 起主配置的注入失败不再让游戏崩（见 MixinFailureHandler），代价是可能出现
+    // 「一部分 mixin 已应用、另一部分没应用」的半应用状态。此时若照常跑功能代码，
+    // 第一个跨 mixin 的强制转换就会抛 ClassCastException，比原来的启动崩溃更难排查。
+    //
+    // 因此这里维护一个降级集合，并在 FMLCommonSetupEvent 阶段用**能力检测**确认真实的
+    // 应用结果：mixin 加上的接口会出现在已加载的目标类上，用 isAssignableFrom 即可判断。
+    // 一旦发现缺失，{@link #degraded()} 为真，{@code Ae2Effects} 会把全部技能等级发布成 0，
+    // 所有功能路径在强制转换之前就返回，游戏正常可玩、只是技能不生效。
+
+    /** 降级原因（注入失败 + 能力缺失），为空表示一切正常。 */
+    private static final Set<String> DEGRADED = new LinkedHashSet<>();
+    private static boolean capabilitiesChecked;
+
+    /** 主配置注入失败：只降级，不崩。由 {@link MixinFailureHandler} 调用。 */
+    public static synchronized void markDegraded(String reason) {
+        if (reason != null && !reason.isBlank() && DEGRADED.add(reason)) {
+            LoggerFactory.getLogger("zifeng_ae2_skills").warn(
+                    "AE2 技能功能已降级（游戏继续运行）/ Addon features degraded, game keeps running: {}", reason);
+        }
+    }
+
+    /** 是否有任何功能因注入失败或缺席而被降级。 */
+    public static boolean degraded() { return !DEGRADED.isEmpty(); }
+
+    /** 预检问题清单（不含版本等噪音），供游戏内提示使用。 */
+    public static java.util.List<String> problems() { return new java.util.ArrayList<>(PROBLEMS); }
+
+    /** 降级原因的对外文本；未降级时返回 null。 */
+    public static String degradedReasons() {
+        return DEGRADED.isEmpty() ? null : String.join("；", DEGRADED);
+    }
+
+    /**
+     * 能力检测：确认每个跨 mixin 接口真的挂到了目标类上。
+     * <p>必须在 mixin 应用之后调用（{@code FMLCommonSetupEvent}）；重复调用是安全的。
+     * <p>本方法会<b>主动触发</b>目标类加载，加载时 Mixin 才会去应用对应的混入，
+     * 因此这里读到的是最终状态，而不是「还没被处理」的原始类。
+     */
+    public static synchronized void checkApplied() {
+        if (capabilitiesChecked) return;
+        capabilitiesChecked = true;
+        // 预检已经判定不可用时，混入是被插件主动跳过的，不是「被谁抢走」。
+        // 那种情况由 report()/diagnostic() 统一说明，这里不必再补 5 条「未接入」噪音。
+        if (!enabled()) return;
+        require("合成 CPU 集群 / Crafting CPU cluster", CpuExtension.class, CraftingCPUCluster.class);
+        require("合成 CPU 逻辑 / Crafting CPU logic", CpuLogicAccess.class, CraftingCpuLogic.class);
+        require("合成任务 / Crafting job", JobAccess.class, ExecutingCraftingJob.class);
+        require("合成计时器 / Crafting timer", TimeAccess.class, ElapsedTimeTracker.class);
+        require("瞬成光标 / Instant crafting cursor", InstantCpuExtension.class, CraftingCpuLogic.class);
+        if (degraded()) {
+            LoggerFactory.getLogger("zifeng_ae2_skills").error(
+                    "AE2 技能因为缺少混入目标而降级，全部技能已停用 / Addon degraded, all skills disabled: {}",
+                    degradedReasons());
+        }
+    }
+
+    private static void require(String label, Class<?> contract, Class<?> target) {
+        try {
+            if (!contract.isAssignableFrom(target)) markDegraded(label + " 未接入 / not applied");
+        } catch (LinkageError | RuntimeException error) {
+            markDegraded(label + " 无法加载 / cannot load");
+        }
     }
     public static String diagnostic() {
         return "子枫 AE2 技能附属无法加载 / Zifeng AE2 Skills cannot load.\n" + versions + "\n"

@@ -46,7 +46,9 @@ public abstract class UfoCpuPoolSkillsMixin {
             target = "(Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/BlockPos;)Lappeng/me/cluster/implementations/CraftingCPUCluster;"), require = 2)
     private CraftingCPUCluster zifeng$ownedSlot(BlockPos min, BlockPos max, Operation<CraftingCPUCluster> original) {
         var cpu = original.call(min, max);
-        VirtualCpus.state(cpu).externallyManaged = true;
+        // 半应用状态下 state() 返回共享占位，写入会泄漏到所有 CPU，因此走可写入口。
+        var state = VirtualCpus.mutableState(cpu);
+        if (state != null) state.externallyManaged = true;
         return cpu;
     }
 }

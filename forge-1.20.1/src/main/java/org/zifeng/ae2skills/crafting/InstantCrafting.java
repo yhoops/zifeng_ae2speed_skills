@@ -5,6 +5,7 @@ import appeng.api.config.PowerMultiplier;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.energy.IEnergyService;
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.CraftingCpuLogic;
@@ -30,15 +31,17 @@ public final class InstantCrafting {
     }
 
     public static void tick(CraftingCpuLogic logic, IEnergyService energy, CraftingService service) {
-        tick(new NativeCpuExecution(logic), ((InstantCpuExtension) logic).zifeng$instantCursor(), energy, service);
+        // 光标由 AeInstantCpuMixin 提供；半应用状态下它可能没挂上，此时直接退回原版行为。
+        if (!(logic instanceof InstantCpuExtension extension)) return;
+        tick(new NativeCpuExecution(logic), extension.zifeng$instantCursor(), energy, service);
     }
 
     public static void tick(CpuExecution logic, Cursor cursor, IEnergyService energy, CraftingService service) {
         int level = Ae2Effects.getAssemblerInfiniteLevel();
         Object originalJob = logic.skillJob();
-        if (level == 0 || originalJob == null) { cursor.clear(); return; }
+        // 合成任务访问器没挂上（半应用）时直接退回原版行为。
+        if (level == 0 || !(originalJob instanceof JobAccess job)) { cursor.clear(); return; }
         if (logic.skillSuspended()) return;
-        JobAccess job = (JobAccess) originalJob;
         if (!logic.skillActive() || job.zifeng$getLink().isCanceled()) return;
 
         long now = System.nanoTime();
@@ -133,13 +136,18 @@ public final class InstantCrafting {
             for (var output : produced) {
                 job.zifeng$getWaitingFor().insert(output.getKey(), output.getLongValue() * count, Actionable.MODULATE);
             }
-            AEKey finalKey = logic.skillFinalOutput().what();
+            // 最终产物键缺失（合成任务在本次计算期间被清掉）时退回「全部按普通产物交付」：
+            // 交付本身有三层兜底，不会丢物；这里只保证不会对 null 键做 equals/get。
+            GenericStack finalOutput = logic.skillFinalOutput();
+            AEKey finalKey = finalOutput == null ? null : finalOutput.what();
             // Return containers/byproducts before the last output can finish and clear the job.
             for (var output : produced) {
-                if (!output.getKey().equals(finalKey)) deliver(logic, output.getKey(), output.getLongValue() * count);
+                if (finalKey == null || !output.getKey().equals(finalKey)) {
+                    deliver(logic, output.getKey(), output.getLongValue() * count);
+                }
             }
-            long finalAmount = produced.get(finalKey) * count;
-            if (finalAmount > 0) deliver(logic, finalKey, finalAmount);
+            long finalAmount = finalKey == null ? 0 : produced.get(finalKey) * count;
+            if (finalKey != null && finalAmount > 0) deliver(logic, finalKey, finalAmount);
             logic.skillMarkDirty();
             return count;
         } finally {

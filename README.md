@@ -37,8 +37,8 @@
 
 | 游戏版本 | 加载器 | 下载文件 |
 |---|---|---|
-| 1.20.1 | Forge 47 | `zifeng_ae2_skills_forge_1_20_1-<版本>.jar` |
-| 1.21.1 | NeoForge 21.1 | `zifeng_ae2_skills-<版本>.jar` |
+| 1.20.1 | Forge 47 | `zifeng_ae2speed_skills-<版本>-1.20.1forge.jar` |
+| 1.21.1 | NeoForge 21.1 | `zifeng_ae2speed_skills-<版本>-1.21.1neoforge.jar` |
 
 服务端与客户端需安装相同版本。
 
@@ -230,6 +230,16 @@ AE 供电功能与五项技能分别检查兼容性。本体转换机接口不�
 
 启动时会检查关键接口和注入位置，发现不匹配会给出加载诊断。依赖声明允许安装其他版本，不代表这些版本全部经过验证。
 
+### 与其他模组冲突时会发生什么（1.20.1 / 1.2.1 起）
+
+如果有别的模组以更高优先级覆盖了 AE2 合成服务里的同一个方法（例如 crazyae2addons 用 `@Overwrite` 重写 `CraftingService.insertIntoCpus`），1.2.1 之前的表现是**游戏无法启动**，1.2.1 起改为：
+
+1. 游戏照常进入，受影响的功能停用，其它功能不受影响；服务端日志留一条 WARN，写明是哪个目标类没接上。
+2. 玩家进服时聊天框会收到提示：技能已停用、逐条失败原因、以及 `logs/latest.log` 的完整路径。每个玩家每次进服只提示一次。
+3. 这是**整体降级**而不是关掉单个技能——五个技能共享同一套注入契约并读写同一份存档数据，只关一个会让存档结构分叉。
+
+被停用后玩家看到的症状就是「技能点了没用」。如果聊天框没有出现这条提示，说明注入是成功的，问题在别处（先查技能点是否够、本体页签是否正常显示）。
+
 > **1.20.1 版的验证范围比 1.21.1 更窄。** 所有 mixin 目标点均通过反编译比对签名确认存在，构建产物也经过内容校验，但尚未在 1.20.1 的真实客户端/服务端上完整跑过一遍。首次使用请先备份存档。
 
 ## 常见问题
@@ -243,6 +253,8 @@ AE 供电功能与五项技能分别检查兼容性。本体转换机接口不�
 | 开启 AE 后不产生技能点 | 检查机器主人、相邻网络、供电、红石状态、输入速率与本体转换阈值 |
 | 容量提示出现备用格式 | 显示层已恢复，任务逻辑不受影响；反馈时附上 `logs/latest.log` |
 | 第三方模组加成没生效 | 查 `logs/latest.log` 中是否有 `Optional AE2 skill integration contract failed` |
+| 进游戏后聊天框提示技能已停用 | 注入被其他模组抢走了。照样能玩，但技能不生效；按提示里的路径附上 `logs/latest.log` 反馈 |
+| 与 crazyae2addons 同装 | 1.2.1（Forge 1.20.1）起不再因此崩溃，可正常同装 |
 
 完整的功能边界与已知限制见 [Releases](https://github.com/yhoops/zifeng_ae2speed_skills/releases) 中各版本的说明。
 
@@ -254,8 +266,8 @@ AE 供电功能与五项技能分别检查兼容性。本体转换机接口不�
 
 | 版本 | 目录 | JDK | 产物 |
 |---|---|---|---|
-| NeoForge 1.21.1 | 仓库根目录 | 21 | `build/libs/zifeng_ae2_skills-<版本>.jar` |
-| Forge 1.20.1 | `forge-1.20.1/` | 17 | `forge-1.20.1/build/libs/zifeng_ae2_skills_forge_1_20_1-<版本>.jar` |
+| NeoForge 1.21.1 | 仓库根目录 | 21 | `build/libs/zifeng_ae2speed_skills-<版本>-1.21.1neoforge.jar` |
+| Forge 1.20.1 | `forge-1.20.1/` | 17 | `forge-1.20.1/build/libs/zifeng_ae2speed_skills-<版本>-1.20.1forge.jar` |
 
 NeoForge 1.21.1（安装 JDK 21，在仓库根目录执行）：
 

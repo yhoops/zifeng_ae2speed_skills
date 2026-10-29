@@ -1,5 +1,5 @@
 {
-  "required": true,
+  "required": false,
   "minVersion": "0.8",
   "package": "org.zifeng.ae2skills.mixin",
   "plugin": "org.zifeng.ae2skills.compat.CompatibilityPlugin",
@@ -16,6 +16,7 @@
     "ae2.CraftingTimeAccess",
     "ae2.AeCpuClusterMixin",
     "ae2.AeCraftingServiceMixin",
+    "ae2.AeCpuInsertMixin",
     "ae2.AeCpuBlockMixin",
     "ae2.UnlimitedCpuMixin",
     "ae2.PatternProviderPushMixin",

@@ -28,8 +28,8 @@ public final class UnlimitedDispatch {
         long began = System.nanoTime(), deadline = TickBudget.deadline(began);
         if (deadline <= began) return;
         var original = logic.skillJob();
-        if (original == null) { cursor.clear(); return; }
-        var job = (JobAccess) original;
+        // 合成任务访问器没挂上（半应用）时直接退回原版行为。
+        if (!(original instanceof JobAccess job)) { cursor.clear(); return; }
         if (logic.skillSuspended() || job.zifeng$getLink().isCanceled() || !logic.skillActive()) return;
         try {
             if (cursor.job != original) {

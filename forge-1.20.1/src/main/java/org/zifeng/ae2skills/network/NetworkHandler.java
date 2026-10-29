@@ -56,9 +56,17 @@ public final class NetworkHandler {
     // ---------------------------------------------------------------- 发送入口
     // 下面这些静态方法是给其它包（含 mixin）用的稳定门面；调用方不需要知道 SimpleChannel 的细节。
 
+    /**
+     * 通道是否已注册。
+     * <p>预检失败时 {@code Addon} 会跳过 {@link #register()}，此时任何发送都会在
+     * {@code IndexedMessageCodec} 里抛 IllegalArgumentException 并打断整个 tick。
+     * 技能等级广播在每个 tick 结束时都可能触发，因此这里必须先判断。
+     */
+    public static boolean registered() { return registered; }
+
     /** 发给单个玩家；按消息类型分派，未知类型只记一条警告而不抛异常。 */
     public static void sendToPlayer(ServerPlayer player, Object msg) {
-        if (player == null || msg == null) return;
+        if (player == null || msg == null || !registered) return;
         if (!(msg instanceof StatePayload || msg instanceof DivineThunderS2CPacket
                 || msg instanceof AePowerStateS2CPacket)) {
             LoggerFactory.getLogger(Addon.MOD_ID).warn("[网络] 无法发送未知消息类型：{}", msg.getClass().getName());
@@ -69,7 +77,7 @@ public final class NetworkHandler {
 
     /** 发给所有在线玩家。 */
     public static void sendToAllPlayers(Object msg) {
-        if (msg == null) return;
+        if (msg == null || !registered) return;
         if (!(msg instanceof StatePayload || msg instanceof DivineThunderS2CPacket
                 || msg instanceof AePowerStateS2CPacket)) {
             LoggerFactory.getLogger(Addon.MOD_ID).warn("[网络] 无法广播未知消息类型：{}", msg.getClass().getName());
@@ -80,7 +88,7 @@ public final class NetworkHandler {
 
     /** 客户端 → 服务端（GUI 点击、开关切换等）。 */
     public static void sendToServer(Object msg) {
-        if (msg == null) return;
+        if (msg == null || !registered) return;
         if (!(msg instanceof AePowerToggleC2SPacket)) {
             LoggerFactory.getLogger(Addon.MOD_ID).warn("[网络] 无法上传未知消息类型：{}", msg.getClass().getName());
             return;

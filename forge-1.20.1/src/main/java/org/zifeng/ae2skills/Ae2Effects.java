@@ -38,7 +38,19 @@ public final class Ae2Effects {
         return base > Long.MAX_VALUE / factor ? Long.MAX_VALUE : base * factor;
     }
     public static int[] snapshot() { return LEVELS.clone(); }
+
+    /**
+     * 功能是否被降级关停（注入失败或预检失败）。
+     * <p>降级后所有技能等级一律发布成 0：功能代码里的跨 mixin 强制转换因此永远走不到
+     * ——那些接口正是没接上的东西，强行进入只会抛 {@code ClassCastException}。
+     */
+    private static boolean shutDown() {
+        return org.zifeng.ae2skills.compat.Compatibility.degraded()
+                || !org.zifeng.ae2skills.compat.Compatibility.enabled();
+    }
+
     public static void update(UUID player, int a, int c, int ai, int ci, int dv) {
+        if (shutDown()) { if (!PLAYERS.isEmpty()) clear(); return; }
         a = Mth.clamp(a, 0, 4); c = Mth.clamp(c, 0, 4);
         ai = Mth.clamp(ai, 0, 5); ci = Mth.clamp(ci, 0, 5);
         dv = Mth.clamp(dv, 0, SkillDefinitions.DIVINE_MAX_LEVEL);

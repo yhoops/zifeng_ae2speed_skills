@@ -21,9 +21,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.zifeng.ae2skills.Ae2Effects;
 import org.zifeng.ae2skills.compat.CpuAdapterRegistry;
 import org.zifeng.ae2skills.crafting.VirtualCpus;
-import org.zifeng.ae2skills.crafting.InstantCrafting;
-import appeng.api.config.Actionable;
-import appeng.api.stacks.AEKey;
 
 @Mixin(value = CraftingService.class, remap = false)
 public abstract class AeCraftingServiceMixin {
@@ -107,14 +104,5 @@ public abstract class AeCraftingServiceMixin {
         for (int i = 0; i < order.size(); i++) {
             order.get((first + i) % order.size()).craftingLogic.tickCraftingLogic(energy, service);
         }
-    }
-
-    @Redirect(method = "insertIntoCpus", at = @At(value = "INVOKE",
-            target = "Lappeng/crafting/execution/CraftingCpuLogic;insert(Lappeng/api/stacks/AEKey;JLappeng/api/config/Actionable;)J"), require = 1)
-    private long zifeng$ownFinalOutput(CraftingCpuLogic logic, AEKey key, long amount, Actionable mode) {
-        // Completion is already accounted to the originating CPU. Do not let a standalone
-        // sibling also mark its final order complete using these same items (native insert returns 0).
-        if (InstantCrafting.isDeliveringFinalOutput() && key.matches(logic.getFinalJobOutput())) return 0;
-        return logic.insert(key, amount, mode);
     }
 }

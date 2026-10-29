@@ -18,6 +18,10 @@ public final class Addon {
 
     public Addon() {
         IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
+        // 能力检测必须无条件执行：它是「混入半应用」的唯一发现手段，而半应用与预检失败
+        // 是两条互不相关的原因（预检看的是类结构是否齐全，混入能否应用还取决于别家模组）。
+        // 放在 FMLCommonSetupEvent 是因为那时目标类都已经加载完毕。
+        bus.addListener((FMLCommonSetupEvent event) -> Compatibility.checkApplied());
         if (!Compatibility.enabled()) {
             // Registries belong to the host/AE2. Let their registration phase finish before
             // reporting a loading error, otherwise FML adds unrelated incomplete-registry errors.

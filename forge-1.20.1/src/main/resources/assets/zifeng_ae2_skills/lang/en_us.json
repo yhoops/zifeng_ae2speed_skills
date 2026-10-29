@@ -22,6 +22,8 @@
   "ui.zifeng_ae2_skills.ae_not_connected": "⚠ Not connected to an ME network (an AE cable or device must touch one of the 6 faces)",
   "ui.zifeng_ae2_skills.server_effect": "Server effect: %s",
   "ui.zifeng_ae2_skills.cpu_storage_format_fallback": " (Capacity display failed; using a fallback format. Crafting is unaffected. Please include logs/latest.log when reporting.)",
+  "ui.zifeng_ae2_skills.degraded_header": "[Zifeng AE2 Skills] Addon features are disabled; skills will not take effect, but the game is playable. Reason:",
+  "ui.zifeng_ae2_skills.degraded_log": "Full error report: %s (please attach this file when reporting)",
   "advancement.zifeng_ae2_skills.divine_machine_grace.title": "Grace of the Myriad-Machine God",
   "advancement.zifeng_ae2_skills.divine_machine_grace.description": "Activate Grace of the Myriad-Machine God at level 5 for the first time: an entire AE production line runs a thousand times faster at your command.",
   "advancement.zifeng_ae2_skills.divine_assembler_grace.title": "Grace of the Assembly God",
